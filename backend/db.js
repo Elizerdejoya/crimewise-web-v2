@@ -222,7 +222,27 @@ async function initializeSchema() {
   }
 }
 
-// Call the async function to initialize the schema
-initializeSchema();
+// Call the async function to initialize the schema and attach the promise
+const initPromise = (async () => {
+  try {
+    console.log("[DB] Starting schema initialization...");
+    
+    // Add a timeout to prevent hanging on Vercel
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Database initialization timeout (30s)")), 30000)
+    );
+    
+    await Promise.race([initializeSchema(), timeoutPromise]);
+    console.log("[DB] Schema initialization completed");
+    return true;
+  } catch (err) {
+    console.error("[DB] Error initializing schema:", err.message || err);
+    // Don't exit - let the app start and handle errors per-request
+    return false;
+  }
+})();
+
+// expose the initialization promise on the db object so callers can wait for it
+db.initialized = initPromise;
 
 module.exports = db;

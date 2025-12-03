@@ -116,14 +116,26 @@ if (process.env.NODE_ENV !== "production") {
 // Initialize database on first request (serverless-friendly approach)
 let dbInitialized = false;
 app.use(async (req, res, next) => {
+  // Skip for health/test endpoints
+  if (req.path === "/health" || req.path === "/test") {
+    return next();
+  }
+
   if (!dbInitialized) {
     try {
-      await db.initialized;
-      dbInitialized = true;
-      console.log("Database initialized successfully");
+      console.log("[API] Waiting for DB initialization...");
+      const result = await Promise.race([
+        db.initialized,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("DB init timeout")), 25000)
+        )
+      ]);
+      dbInitialized = result !== false;
+      console.log(`[API] DB initialized: ${dbInitialized}`);
     } catch (err) {
-      console.error("Database initialization error:", err);
-      return res.status(500).json({ error: "Database initialization failed" });
+      console.error("[API] DB initialization error:", err.message || err);
+      // Continue anyway - allow requests even if DB init fails
+      dbInitialized = true;
     }
   }
   next();
