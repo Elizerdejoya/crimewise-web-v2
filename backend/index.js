@@ -16,6 +16,8 @@ const corsOptions = {
       "http://localhost:5174",
       "http://localhost:3000",
       "http://localhost:4173",
+      "https://crimewise-web-v2.vercel.app",
+      "https://crimewise-web-v2-ri4n.vercel.app",
       "https://crimewisesys-yelj.vercel.app",
       "https://crimewisesys.vercel.app",
       "https://crimewise.vercel.app",
@@ -103,15 +105,23 @@ app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/dist", "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Wait for DB schema initialization before starting server and background workers
+db.initialized
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
 
-// Start background AI worker (processes ai_queue). It's safe to call in-process;
-// on serverless platforms this will run while the function instance is warm.
-try {
-  const aiWorker = require('./ai-worker');
-  aiWorker.start();
-} catch (e) {
-  console.error('Failed to start AI worker:', e && e.message ? e.message : e);
-}
+    // Start background AI worker (processes ai_queue). It's safe to call in-process;
+    // on serverless platforms this will run while the function instance is warm.
+    try {
+      const aiWorker = require('./ai-worker');
+      aiWorker.start();
+    } catch (e) {
+      console.error('Failed to start AI worker:', e && e.message ? e.message : e);
+    }
+  })
+  .catch((err) => {
+    console.error('Database initialization failed, exiting:', err && err.message ? err.message : err);
+    process.exit(1);
+  });
