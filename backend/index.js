@@ -113,10 +113,27 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
+// Initialize database on first request (serverless-friendly approach)
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    try {
+      await db.initialized;
+      dbInitialized = true;
+      console.log("Database initialized successfully");
+    } catch (err) {
+      console.error("Database initialization error:", err);
+      return res.status(500).json({ error: "Database initialization failed" });
+    }
+  }
+  next();
+});
+
 // For development: wait for DB and start server
 if (require.main === module) {
   db.initialized
     .then(() => {
+      dbInitialized = true;
       app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
       });
