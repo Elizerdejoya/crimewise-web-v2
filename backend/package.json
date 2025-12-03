@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "postinstall": "cd ../frontend && npm install && npm run build",
+    "postinstall": "[ -d ../frontend ] && (cd ../frontend && npm install && npm run build) || echo 'no frontend directory, skipping postinstall'",
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
