@@ -101,27 +101,38 @@ app.get("/test", (req, res) => {
   });
 });
 
-app.get(/(.*)/, (req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/dist", "index.html"));
+// Health check endpoint for Vercel
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
-// Wait for DB schema initialization before starting server and background workers
-db.initialized
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-
-    // Start background AI worker (processes ai_queue). It's safe to call in-process;
-    // on serverless platforms this will run while the function instance is warm.
-    try {
-      const aiWorker = require('./ai-worker');
-      aiWorker.start();
-    } catch (e) {
-      console.error('Failed to start AI worker:', e && e.message ? e.message : e);
-    }
-  })
-  .catch((err) => {
-    console.error('Database initialization failed, exiting:', err && err.message ? err.message : err);
-    process.exit(1);
+// Serve frontend for non-API routes (only in non-serverless environment)
+if (process.env.NODE_ENV !== "production") {
+  app.get(/(.*)/, (req, res) => {
+    res.sendFile(path.join(__dirname, "../frontend/dist", "index.html"));
   });
+}
+
+// For development: wait for DB and start server
+if (require.main === module) {
+  db.initialized
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+
+      try {
+        const aiWorker = require('./ai-worker');
+        aiWorker.start();
+      } catch (e) {
+        console.error('Failed to start AI worker:', e && e.message ? e.message : e);
+      }
+    })
+    .catch((err) => {
+      console.error('Database initialization failed, exiting:', err && err.message ? err.message : err);
+      process.exit(1);
+    });
+}
+
+// Export for Vercel serverless
+module.exports = app;
