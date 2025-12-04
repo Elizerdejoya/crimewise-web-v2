@@ -1,5 +1,6 @@
 const db = require('./db');
 const grader = require('./geminiGrader');
+const apiKeyManager = require('./apiKeyManager');
 
 // DB-backed worker with intelligent concurrency and rate limiting.
 // 
@@ -17,7 +18,6 @@ const MIN_REQUEST_INTERVAL_MS = 7500; // 7.5 seconds = 8 requests per 60 seconds
 
 let active = 0;
 let stopped = false;
-let lastRequestTime = 0; // Track last request time for global rate limiting
 
 async function pickJob() {
   // Pick a single pending job that is eligible for processing.
@@ -41,20 +41,22 @@ async function processJob(job) {
   if (!job) return;
   const jobId = job.id;
   try {
-    // Rate limiting: ensure min 7.5 seconds between any requests (8 RPM per key)
-    const now = Date.now();
-    const timeSinceLastRequest = now - lastRequestTime;
-    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
-      const waitMs = MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
-      console.log(`[AI-WORKER] Rate limiting: waiting ${Math.ceil(waitMs)}ms before next request`);
-      await new Promise((r) => setTimeout(r, waitMs));
+    // Select a key and respect its per-key wait time
+    const keyObj = apiKeyManager.getNextKey();
+    if (!keyObj || !keyObj.key) {
+      // No keys available: small delay and re-queue
+      console.warn('[AI-WORKER] No API keys available, sleeping briefly');
+      await new Promise((r) => setTimeout(r, 2000));
+    } else if (keyObj.waitMs && keyObj.waitMs > 0) {
+      console.log(`[AI-WORKER] Waiting ${Math.ceil(keyObj.waitMs)}ms for key ${keyObj.index + 1} availability`);
+      await new Promise((r) => setTimeout(r, keyObj.waitMs));
     }
-    lastRequestTime = Date.now();
 
-    await db.sql`UPDATE ai_queue SET status = 'processing', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
+    // Update job to processing with retry in case of transient DB lock
+    await runDbUpdateWithRetry(jobId, () => db.sql`UPDATE ai_queue SET status = 'processing', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`);
 
     // Refresh job row to get any recent changes and current findings fields
-    const freshRows = await db.sql`SELECT * FROM ai_queue WHERE id = ${jobId} LIMIT 1`;
+    const freshRows = await runDbSelectWithRetry(jobId, () => db.sql`SELECT * FROM ai_queue WHERE id = ${jobId} LIMIT 1`);
     const fresh = Array.isArray(freshRows) ? freshRows[0] : freshRows || {};
 
     // Ensure we have teacher_findings and student_findings; if missing, try to populate from results/exam/question
@@ -118,30 +120,36 @@ async function processJob(job) {
 
     // Persist any findings we filled so retries or UI queries see them
     try {
-      await db.sql`UPDATE ai_queue SET teacher_findings = ${String(teacherFindings)}, student_findings = ${String(studentFindings)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
+      await runDbUpdateWithRetry(jobId, () => db.sql`UPDATE ai_queue SET teacher_findings = ${String(teacherFindings)}, student_findings = ${String(studentFindings)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`);
     } catch (e) {
       console.error('[AI-WORKER] Failed to save filled findings for job', jobId, e && e.message ? e.message : e);
     }
 
-    // Call grader. grader.gradeStudent should write results to ai_grades table.
-    await grader.gradeStudent(Number(job.student_id), Number(job.exam_id), teacherFindings || '', studentFindings || '');
+    // Call grader. Get a fresh keyObj for this call (apiKeyManager.getNextKey() was previously called above)
+    const keyObjForCall = keyObj && keyObj.key ? keyObj : apiKeyManager.getNextKey();
+    try {
+      await grader.gradeStudent(Number(job.student_id), Number(job.exam_id), teacherFindings || '', studentFindings || '', keyObjForCall);
+    } catch (e) {
+      // grader will throw on network errors — rethrow so retry/backoff logic can handle it
+      throw e;
+    }
 
-    await db.sql`UPDATE ai_queue SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
+    await runDbUpdateWithRetry(jobId, () => db.sql`UPDATE ai_queue SET status = 'done', updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`);
     console.log('[AI-WORKER] Job', jobId, 'done');
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
     console.error('[AI-WORKER] Job', jobId, 'failed:', msg);
 
     // If we've reached max retries, mark as error. Otherwise leave as pending so it will be retried after backoff.
-    const attemptsRow = await db.sql`SELECT attempts FROM ai_queue WHERE id = ${jobId} LIMIT 1`;
+    const attemptsRow = await runDbSelectWithRetry(jobId, () => db.sql`SELECT attempts FROM ai_queue WHERE id = ${jobId} LIMIT 1`);
     const attempts = attemptsRow && attemptsRow[0] ? Number(attemptsRow[0].attempts || 0) : job.attempts || 0;
 
     if (attempts >= MAX_RETRIES) {
-      await db.sql`UPDATE ai_queue SET status = 'error', last_error = ${msg}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
+      await runDbUpdateWithRetry(jobId, () => db.sql`UPDATE ai_queue SET status = 'error', last_error = ${String(msg)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`);
       console.error('[AI-WORKER] Job', jobId, 'marked error after', attempts, 'attempts');
     } else {
       // Set back to pending; attempts already incremented. Save last_error so it's visible.
-      await db.sql`UPDATE ai_queue SET status = 'pending', last_error = ${msg}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
+      await runDbUpdateWithRetry(jobId, () => db.sql`UPDATE ai_queue SET status = 'pending', last_error = ${String(msg)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`);
       console.log('[AI-WORKER] Job', jobId, 'will be retried (attempt', attempts, ')');
     }
   }
@@ -197,3 +205,40 @@ function stop() {
 }
 
 module.exports = { start, stop, runOnce };
+
+// Helper: run DB update with retries on SQLITE_BUSY or transient errors
+async function runDbUpdateWithRetry(jobId, dbFn, retries = 5) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await dbFn();
+      return;
+    } catch (err) {
+      const m = err && err.message ? err.message : String(err);
+      if (m && m.toLowerCase().includes('busy') && attempt < retries) {
+        const wait = attempt * 200 + 100;
+        console.warn(`[AI-WORKER] DB busy on job ${jobId}, retrying after ${wait}ms (attempt ${attempt})`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function runDbSelectWithRetry(jobId, dbFn, retries = 5) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const rows = await dbFn();
+      return rows;
+    } catch (err) {
+      const m = err && err.message ? err.message : String(err);
+      if (m && m.toLowerCase().includes('busy') && attempt < retries) {
+        const wait = attempt * 200 + 100;
+        console.warn(`[AI-WORKER] DB busy on select ${jobId}, retrying after ${wait}ms (attempt ${attempt})`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+}

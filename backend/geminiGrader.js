@@ -2,7 +2,7 @@ const db = require('./db');
 const { GoogleGenAI } = require('@google/genai');
 const apiKeyManager = require('./apiKeyManager');
 
-async function gradeStudent(studentId, examId, teacherFindings, studentFindings) {
+async function gradeStudent(studentId, examId, teacherFindings, studentFindings, apiKeyObj = null) {
   console.log('[GRADER] Scheduling grading for student', studentId, 'exam', examId);
   
   // PRE-CHECK: If answers are identical/nearly identical, return perfect score immediately
@@ -102,13 +102,25 @@ Return ONLY valid JSON with these exact fields:
 }`;
 
   try {
-    const currentApiKey = apiKeyManager.getNextApiKey();
-    if (!currentApiKey) {
+    let keyIndex = null;
+    let usedApiKey = null;
+    if (apiKeyObj && apiKeyObj.key) {
+      usedApiKey = apiKeyObj.key;
+      keyIndex = apiKeyObj.index;
+    } else {
+      // Fallback: request a key from manager (ai-worker should pass this normally)
+      const k = apiKeyManager.getNextKey();
+      usedApiKey = k.key;
+      keyIndex = k.index;
+      if (k.waitMs && k.waitMs > 0) await new Promise((r) => setTimeout(r, k.waitMs));
+    }
+
+    if (!usedApiKey) {
       console.error('[GRADER] Error: No API keys configured. Please set GEMINI_API_KEY_1 through GEMINI_API_KEY_6.');
       throw new Error('No Gemini API keys configured for grader');
     }
 
-    const genAI = new GoogleGenAI({ apiKey: currentApiKey });
+    const genAI = new GoogleGenAI({ apiKey: usedApiKey });
 
     // Try the Gemini call with a couple of retries to handle transient network issues
     let response = null;
@@ -124,7 +136,23 @@ Return ONLY valid JSON with these exact fields:
         });
         break;
       } catch (callErr) {
-        console.error(`[GRADER] Gemini call failed (attempt ${attempt}):`, callErr && callErr.message ? callErr.message : callErr);
+        // Inspect for rate-limit or server errors
+        const statusCode = callErr && (callErr.status || callErr.statusCode || (callErr.response && callErr.response.status));
+        console.error(`[GRADER] Gemini call failed (attempt ${attempt}) status=${statusCode}:`, callErr && callErr.message ? callErr.message : callErr);
+        // If 429, inform apiKeyManager to penalize this key
+        if (statusCode === 429) {
+          // Try to parse Retry-After header
+          let retryAfter = null;
+          try {
+            if (callErr.response && callErr.response.headers && callErr.response.headers['retry-after']) {
+              retryAfter = Number(callErr.response.headers['retry-after']);
+            }
+          } catch (e) {}
+          apiKeyManager.reportFailure(keyIndex, 429, retryAfter);
+        } else if (statusCode && statusCode >= 500) {
+          apiKeyManager.reportFailure(keyIndex, statusCode, null);
+        }
+
         if (attempt === maxRetries) throw callErr;
         // small backoff before retrying
         await new Promise((res) => setTimeout(res, attempt * 1000));
@@ -287,6 +315,11 @@ Return ONLY valid JSON with these exact fields:
     } catch (dbErr) {
       console.error('[GRADER] Failed to save AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }
+
+    // Mark successful usage of the key
+    try {
+      if (keyIndex != null) apiKeyManager.markRequest(keyIndex);
+    } catch (e) {}
 
     console.log('[GRADER] Grading complete for', studentId, examId, 'score:', overall);
 
