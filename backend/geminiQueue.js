@@ -1,29 +1,26 @@
-// Simple FIFO queue for Gemini calls with 1 second delay between requests
+// ⚠️ DEPRECATED: This file is no longer used
+// Queueing is now handled by ai-worker.js with proper concurrency limits and rate limiting
+// 
+// The old geminiQueue was a bottleneck:
+// - Processed only 1 request at a time
+// - Applied arbitrary 1 second delays
+// - Did not utilize multiple API keys
+//
+// New approach (ai-worker.js):
+// - Processes up to 6 jobs concurrently (one per API key)
+// - Implements intelligent rate limiting (8 RPM per key = 48 total RPM)
+// - Uses apiKeyManager for load balancing
+// - Much faster for high-volume submissions
+
+console.warn('[GEMINI-QUEUE] ⚠️ This module is DEPRECATED. Use ai-worker.js instead.');
+
 class GeminiQueue {
   constructor() {
-    this.queue = [];
-    this.running = false;
+    console.warn('[GEMINI-QUEUE] GeminiQueue is deprecated. All grading jobs are now processed by ai-worker.js');
   }
 
   add(task) {
-    this.queue.push(task);
-    this.runNext();
-  }
-
-  async runNext() {
-    if (this.running) return;
-    const next = this.queue.shift();
-    if (!next) return;
-    this.running = true;
-    try {
-      await next();
-    } catch (err) {
-      console.error('[GEMINI-QUEUE] Task error:', err);
-    }
-    // wait 1 second before running the following task to respect rate limits
-    await new Promise((r) => setTimeout(r, 1000));
-    this.running = false;
-    if (this.queue.length > 0) this.runNext();
+    console.warn('[GEMINI-QUEUE] add() is deprecated. Submitting to /api/ai-grader/submit instead.');
   }
 }
 

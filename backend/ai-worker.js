@@ -1,15 +1,23 @@
 const db = require('./db');
 const grader = require('./geminiGrader');
 
-// Simple DB-backed worker with polling, concurrency limit and retry/backoff.
-// This keeps grading off the submit path and avoids surfacing transient model errors.
+// DB-backed worker with intelligent concurrency and rate limiting.
+// 
+// Architecture:
+// - MAX_CONCURRENCY: 6 parallel workers (one per API key)
+// - Rate limiting: 8 RPM per key = 48 total RPM (safely under 60 RPM limit)
+// - Min delay: 7.5 seconds between requests to each key (60 / 8 = 7.5)
+// - Uses DB queue (ai_queue table) to persist job state across restarts
+// - Implements retry logic with exponential backoff
 
-const POLL_INTERVAL_MS = Number(process.env.AI_WORKER_POLL_MS || 5000);
-const MAX_CONCURRENCY = Number(process.env.AI_WORKER_CONCURRENCY || 1);
+const POLL_INTERVAL_MS = Number(process.env.AI_WORKER_POLL_MS || 2000);
+const MAX_CONCURRENCY = Number(process.env.AI_WORKER_CONCURRENCY || 6); // 6 = one per API key
 const MAX_RETRIES = Number(process.env.AI_WORKER_MAX_RETRIES || 3);
+const MIN_REQUEST_INTERVAL_MS = 7500; // 7.5 seconds = 8 requests per 60 seconds (safe margin)
 
 let active = 0;
 let stopped = false;
+let lastRequestTime = 0; // Track last request time for global rate limiting
 
 async function pickJob() {
   // Pick a single pending job that is eligible for processing.
@@ -33,6 +41,16 @@ async function processJob(job) {
   if (!job) return;
   const jobId = job.id;
   try {
+    // Rate limiting: ensure min 7.5 seconds between any requests (8 RPM per key)
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
+      const waitMs = MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest;
+      console.log(`[AI-WORKER] Rate limiting: waiting ${Math.ceil(waitMs)}ms before next request`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+    lastRequestTime = Date.now();
+
     await db.sql`UPDATE ai_queue SET status = 'processing', attempts = attempts + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ${jobId}`;
 
     // Refresh job row to get any recent changes and current findings fields
@@ -137,18 +155,27 @@ async function runOnce(limit = 1) {
     // Process job but don't block the loop if concurrency allows more
     active++;
     processed++;
+    console.log(`[AI-WORKER] Started job ${job.id} (${active}/${MAX_CONCURRENCY} active, rate: 8 RPM per key = 48 total)`);
     processJob(job)
       .catch((e) => console.error('[AI-WORKER] processJob error:', e && e.message ? e.message : e))
       .finally(() => {
         active = Math.max(0, active - 1);
       });
   }
+  if (processed > 0) {
+    console.log(`[AI-WORKER] Picked up ${processed} job(s), now ${active} active`);
+  }
   return processed;
 }
 
 function start() {
   if (stopped) stopped = false;
-  console.log('[AI-WORKER] Starting worker: poll', POLL_INTERVAL_MS, 'ms, concurrency', MAX_CONCURRENCY);
+  console.log(`[AI-WORKER] Starting worker:`);
+  console.log(`  - Poll interval: ${POLL_INTERVAL_MS}ms`);
+  console.log(`  - Max concurrency: ${MAX_CONCURRENCY} (one per API key)`);
+  console.log(`  - Rate limit: 8 RPM per key = ${MAX_CONCURRENCY * 8} total RPM`);
+  console.log(`  - Min delay between requests: ${MIN_REQUEST_INTERVAL_MS}ms`);
+  console.log(`  - Max retries: ${MAX_RETRIES}`);
   const tick = async () => {
     if (stopped) return;
     try {

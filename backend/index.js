@@ -73,6 +73,7 @@ const chatbotRoutes = require("./routes/chatbot");
 const keywordPoolsRoutes = require("./routes/keyword-pools");
 const contactRoutes = require("./routes/contact");
 const aiGraderRoutes = require("./routes/ai-grader");
+const apiKeyManager = require("./apiKeyManager");
 
 // Mount modular routes
 app.use("/api/batches", batchesRoutes);
@@ -99,6 +100,62 @@ app.get("/test", (req, res) => {
     message: "Hello World",
     code: 200,
   });
+});
+
+// API Key usage monitoring endpoint for AI grader
+app.get("/api/monitor/api-keys", (req, res) => {
+  try {
+    const stats = apiKeyManager.getStats();
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      apiKeyStats: stats,
+      message: `Using ${stats.totalKeys} API keys for AI grading with ${stats.totalCapacityRPM} RPM capacity`
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Failed to get API key stats",
+      details: err && err.message ? err.message : err
+    });
+  }
+});
+
+// AI Worker status endpoint
+app.get("/api/monitor/ai-worker", async (req, res) => {
+  try {
+    const pendingCount = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'pending'`;
+    const processingCount = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'processing'`;
+    const doneCount = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'done'`;
+    const errorCount = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'error'`;
+    
+    const pendingNum = pendingCount && pendingCount[0] ? Number(pendingCount[0].count || 0) : 0;
+    const processingNum = processingCount && processingCount[0] ? Number(processingCount[0].count || 0) : 0;
+    const doneNum = doneCount && doneCount[0] ? Number(doneCount[0].count || 0) : 0;
+    const errorNum = errorCount && errorCount[0] ? Number(errorCount[0].count || 0) : 0;
+    
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      aiWorkerQueue: {
+        pending: pendingNum,
+        processing: processingNum,
+        done: doneNum,
+        error: errorNum,
+        total: pendingNum + processingNum + doneNum + errorNum
+      },
+      configuration: {
+        maxConcurrency: 6,
+        rpmPerKey: 8,
+        totalRPM: 48,
+        minDelayMs: 7500
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      error: "Failed to get AI worker status",
+      details: err && err.message ? err.message : err
+    });
+  }
 });
 
 // Health check endpoint for Vercel

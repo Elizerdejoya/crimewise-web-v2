@@ -1,11 +1,33 @@
 const db = require('./db');
-const GeminiQueue = require('./geminiQueue');
 const { GoogleGenAI } = require('@google/genai');
-
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKeyManager = require('./apiKeyManager');
 
 async function gradeStudent(studentId, examId, teacherFindings, studentFindings) {
   console.log('[GRADER] Scheduling grading for student', studentId, 'exam', examId);
+  
+  // PRE-CHECK: If answers are identical/nearly identical, return perfect score immediately
+  const normalize = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const tNorm = normalize(teacherFindings);
+  const sNorm = normalize(studentFindings);
+  
+  if (tNorm && sNorm && tNorm === sNorm) {
+    console.log('[GRADER] EXACT MATCH DETECTED: Identical answers for student', studentId);
+    const perfectScore = {
+      accuracy: 100,
+      completeness: 100,
+      clarity: 100,
+      objectivity: 100,
+      overall: 100
+    };
+    const perfectFeedback = 'Perfect! Your findings match the teacher\'s answer exactly. You demonstrated excellent attention to detail and comprehensive understanding of the forensic analysis.';
+    try {
+      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${perfectScore.overall}, ${perfectScore.accuracy}, ${perfectScore.completeness}, ${perfectScore.clarity}, ${perfectScore.objectivity}, ${perfectFeedback}, ${'EXACT_MATCH_PRECHECK'})`;
+    } catch (dbErr) {
+      console.error('[GRADER] Failed to save perfect score grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
+    }
+    return { score: perfectScore.overall, feedback: perfectFeedback };
+  }
+  
   // Attempt to load per-question rubric weights from the exams->questions relationship
   let rubricWeights = { accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 };
   // Track whether the external API call succeeded. If it did, parsing errors should NOT trigger
@@ -37,19 +59,27 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings)
 
   const prompt = `You are a forensic handwriting analysis expert grading student work. Compare the student's findings to the teacher's official findings (the answer key).
 
-CRITICAL RULE: If the student's findings are IDENTICAL or NEARLY IDENTICAL to the teacher's answer key, assign 100 to ALL components (accuracy, completeness, clarity, objectivity). A perfect match to the answer key earns a perfect overall score of 100.
+CRITICAL RULES FOR 100% SCORING:
+- If the student's findings are identical to the teacher's answer key → assign 100 to ALL components (accuracy, completeness, clarity, objectivity).
+- If the student's findings match the teacher's findings with only minor wording differences → assign 100 to accuracy, completeness, and objectivity (clarity can be 95-100 based on language quality).
+- If all major points from the answer key are covered with no missing details → assign 100 to completeness.
+- EXAMPLES:
+  • If teacher says: "The handwriting shows a rightward slant of approximately 45 degrees with moderate pressure"
+    And student says: "The handwriting shows a rightward slant with moderate pressure at about 45 degrees"
+    → This is ESSENTIALLY IDENTICAL → assign 100 to accuracy, completeness, clarity, objectivity.
 
 Grading criteria (importance):
-1. Accuracy (${rubricWeights.accuracy}%) - How well the student's findings match the teacher's findings. If the student's findings EXACTLY MATCH the teacher's answer key, give 100. Deduct points only if there are missing details or incorrect information.
-2. Completeness (${rubricWeights.completeness}%) - Whether the student covered all the important points from the answer key. If all major points from the answer key match, give 100.
-3. Clarity (${rubricWeights.clarity}%) - Whether the writing is clear and easy to understand. If the explanation is understandable, give 100. Only deduct if confusing.
-4. Objectivity (${rubricWeights.objectivity}%) - Whether the student stayed objective and did not add personal opinions or interpretations. If no bias detected, give 100.
+1. Accuracy (${rubricWeights.accuracy}%) - Does the student's findings match the teacher's findings? For exact matches or matches with only rewording, give 100. Deduct points only if information is incorrect or contradicts the answer key.
+2. Completeness (${rubricWeights.completeness}%) - Did the student cover all important points from the answer key? If all major points match, give 100. Deduct only for missing substantive points.
+3. Clarity (${rubricWeights.clarity}%) - Is the writing clear and understandable? Give 100 if the explanation is clear. Deduct only if the writing is confusing or poorly organized.
+4. Objectivity (${rubricWeights.objectivity}%) - Did the student remain objective without personal bias? Give 100 if no bias detected. Deduct only for obvious subjective opinions.
 
-** VERY IMPORTANT: Your feedback MUST be written in SIMPLE, CLEAR language that criminology students can understand. DO NOT use technical programming terms, code references, JSON terminology, or technical jargon. Write as if explaining to a fellow student. **
-
-CRITICAL SCORING RULE: If the student's findings match the teacher's findings with no errors or omissions, the accuracy score MUST be 100. Do not arbitrarily reduce correct answers.
-
-DO NOT reference or mention any internal labels, field names, keys, or data structure terms from the student's response. For example, never say 'the "explanation" field', 'tableAnswers', 'the JSON format', or any quoted identifiers. If the student includes extra sections, tables, or data points, comment only on their relevance or usefulness in plain language (for example: 'You added extra data that doesn't change the main conclusion'), but do NOT name or describe the section or format.
+IMPORTANT - OUTPUT REQUIREMENTS:
+- Your feedback MUST use SIMPLE, CLEAR language suitable for criminology students. 
+- DO NOT mention or reference JSON, data structures, field names, technical terms, or programming concepts.
+- DO NOT use quoted identifiers like 'explanation', 'tableAnswers', 'field', 'section', 'format', 'structure', 'array', 'object'.
+- Write feedback as if speaking to a fellow student studying forensic analysis.
+- Focus ONLY on the forensic/criminology content, not on how the data is organized or formatted.
 
 Teacher findings:
 """
@@ -68,15 +98,17 @@ Return ONLY valid JSON with these exact fields:
   "clarity": (number 0-100),
   "objectivity": (number 0-100),
   "overall_score": (number 0-100),
-  "feedback": "Write in simple, clear language what the student did well, what they missed, and why this score was given. DO NOT reference or quote any field names, section titles, or data structure terms in the feedback. For example: 'You correctly identified the handwriting slant and baseline characteristics. However, you missed the discussion of pen pressure variations. Your explanation was clear and well-organized. You stayed objective throughout your analysis.'"
-}
-
-NEVER include technical references like JSON structures, code formatting, arrays, quoted identifiers, or programming concepts in the feedback.`;
+  "feedback": "Brief feedback in simple, clear language. Example: 'You correctly identified the handwriting slant and pressure. You also noted the baseline characteristics well. Your analysis was clear and objective. One minor point: you could have elaborated more on the loop formations.'"
+}`;
 
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('[GRADER] Warning: GEMINI_API_KEY is not set in the environment. Gemini requests will likely fail.');
+    const currentApiKey = apiKeyManager.getNextApiKey();
+    if (!currentApiKey) {
+      console.error('[GRADER] Error: No API keys configured. Please set GEMINI_API_KEY_1 through GEMINI_API_KEY_6.');
+      throw new Error('No Gemini API keys configured for grader');
     }
+
+    const genAI = new GoogleGenAI({ apiKey: currentApiKey });
 
     // Try the Gemini call with a couple of retries to handle transient network issues
     let response = null;
@@ -166,61 +198,72 @@ NEVER include technical references like JSON structures, code formatting, arrays
 
     let feedback = String(parsed.feedback ?? (parsed.comments ?? 'No feedback'));
     
-    // Clean up feedback to remove any accidental technical terms or quoted identifiers the AI might have included
-    feedback = feedback
-      .replace(/\bjson\b/gi, '')
-      .replace(/\btableAnswers\b/gi, '')
-      .replace(/\btable\b/gi, '')
-      .replace(/\bconclusion\b/gi, '')
-      .replace(/\broot\b/gi, '')
-      .replace(/\bratio\b/gi, '')
-      .replace(/\bexplanation\b/gi, '')
-      .replace(/\barray\b/gi, '')
-      .replace(/\bobject\b/gi, '')
-      .replace(/\bfield\b/gi, '')
-      .replace(/\bsection\b/gi, '')
-      .replace(/\bstructure\b/gi, '')
-      .replace(/\bformat\b/gi, '')
-      .replace(/\bcode\b/gi, '')
-      // remove quoted identifiers like 'explanation' or "tableAnswers"
-      .replace(/['"][a-zA-Z0-9_]+['"]/g, '')
-      .replace(/`/g, '')
-      .replace(/\{\s*\}/g, '')
-      .replace(/\[\s*\]/g, '')
-      .replace(/  +/g, ' ')
-      .trim();
-
-    // Remove ANY sentences containing quoted identifiers or technical/format terms
+    // Aggressively clean up feedback to remove any technical terms the AI might have included
+    // Step 1: Remove quoted identifiers like 'explanation', "tableAnswers", etc.
+    feedback = feedback.replace(/['"][^'"]*['"][,\.\s]?/g, ' ');
+    
+    // Step 2: Remove common technical/formatting words (case-insensitive)
+    const technicalTerms = [
+      /\bjson\b/gi,
+      /\btableAnswers\b/gi,
+      /\btable\b/gi,
+      /\barray\b/gi,
+      /\bobject\b/gi,
+      /\bfield\b/gi,
+      /\bsection\b/gi,
+      /\bstructure\b/gi,
+      /\bstructured\b/gi,
+      /\bformat\b/gi,
+      /\bformatted\b/gi,
+      /\bcode\b/gi,
+      /\bquoted\b/gi,
+      /\bidentifier\b/gi,
+      /\bkey\b/gi,
+      /\bvalue\b/gi,
+      /\bproperty\b/gi,
+      /\battribute\b/gi,
+      /\belement\b/gi,
+      /\bpair\b/gi,
+    ];
+    
+    for (const term of technicalTerms) {
+      feedback = feedback.replace(term, '');
+    }
+    
+    // Step 3: Split into sentences and filter out ones containing banned patterns
+    const bannedPatterns = [
+      /\bjson\b/i,
+      /\bformat\b/i,
+      /\bstructured\b/i,
+      /\bstructure\b/i,
+      /\bwell-organized\b/i,
+      /\borganized\b/i,
+      /\bclear.*organization|organization.*clear/i,
+      /\bcontent.*remains|remains.*content/i,
+      /\badding.*relevant|relevant.*addition/i,
+      /\benhance.*present|present.*enhance/i,
+      /\bintroduces.*section|section.*introduces/i,
+      /\bclear and well-formatted/i,
+      /\bthe.*explanation\b/i,
+      /\bthe.*table/i,
+      /\bthe.*field/i,
+      /\bquoted/i,
+    ];
+    
     try {
-      // First, remove all quoted identifiers like 'explanation', "tableAnswers", 'root', etc.
-      feedback = feedback.replace(/['"][^'"]*['"][,\.\s]?/g, ' ');
-      
-      // Then filter out sentences with banned patterns
-      const bannedPatterns = [
-        /\bjson\b/i,
-        /\bformat\b/i,
-        /\bstructured\b/i,
-        /\bstructure\b/i,
-        /\borganized\b/i,
-        /\bwell-structured\b/i,
-        /clarity.*organization|organization.*clarity/i,
-        /content remains objective/i,
-        /adding relevant structural/i,
-        /enhance.*presentation/i,
-        /section introduces/i
-      ];
-      
-      // Split into sentences
-      const sentences = feedback.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+      const sentences = feedback.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
       const filtered = sentences.filter(s => !bannedPatterns.some(pattern => pattern.test(s)));
       feedback = filtered.join(' ').trim();
-      
-      // Clean up multiple spaces
-      feedback = feedback.replace(/\s+/g, ' ').trim();
-      
-      if (!feedback) feedback = 'Good job — your findings are clear and match the key points.';
     } catch (e) {
-      // if sentence filtering fails for any reason, keep the cleaned feedback
+      // if sentence filtering fails, continue with what we have
+    }
+    
+    // Step 4: Clean up whitespace
+    feedback = feedback.replace(/\s+/g, ' ').trim();
+    
+    // Step 5: Default to simple feedback if everything got cleaned out
+    if (!feedback || feedback.length < 10) {
+      feedback = 'Good job — your analysis demonstrates understanding of the forensic principles involved.';
     }
 
     // Replace specimen wording per instructor preference: do not use 'fake specimen'/'real specimen'
@@ -347,8 +390,13 @@ NEVER include technical references like JSON structures, code formatting, arrays
   }
 }
 
+/**
+ * ⚠️ DEPRECATED: enqueueGrade is no longer used
+ * Jobs are now queued directly in the ai_queue table via /api/ai-grader/submit
+ * The ai-worker.js processes them with intelligent concurrency (6 workers, 8 RPM per key)
+ */
 function enqueueGrade(studentId, examId, teacherFindings, studentFindings) {
-  GeminiQueue.add(() => gradeStudent(studentId, examId, teacherFindings, studentFindings));
+  console.warn('[GRADER] enqueueGrade is deprecated. Use POST /api/ai-grader/submit instead.');
 }
 
 module.exports = { gradeStudent, enqueueGrade };

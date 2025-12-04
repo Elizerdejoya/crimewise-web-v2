@@ -20,11 +20,11 @@ const upload = multer({
   },
 });
 
-// Initialize Google AI with the new SDK
+// Initialize Google AI with the API key for chatbot
 const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
- 
+
 // Validate API key on startup
 if (!process.env.GEMINI_API_KEY) {
   console.warn(
