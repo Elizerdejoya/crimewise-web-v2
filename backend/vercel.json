@@ -4,6 +4,10 @@
         {
             "src": "index.js",
             "use": "@vercel/node"
+        },
+        {
+            "src": "api/cron/keep-alive.js",
+            "use": "@vercel/node"
         }
     ],
     "routes": [
@@ -18,6 +22,12 @@
         {
             "src": "/health",
             "dest": "/index.js"
+        }
+    ],
+    "crons": [
+        {
+            "path": "/api/cron/keep-alive",
+            "schedule": "0 */10 * * *"
         }
     ]
 }
