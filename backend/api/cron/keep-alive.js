@@ -7,17 +7,10 @@
 
 const { Database } = require("@sqlitecloud/drivers");
 
-export default async (req, res) => {
+module.exports = async (req, res) => {
   // Only allow GET requests
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  // Verify the cron request is from Vercel (optional security check)
-  const authHeader = req.headers.authorization;
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    // Log but don't fail - Vercel crons don't always include auth header
-    console.log("[KEEP-ALIVE] Warning: Invalid or missing cron auth header");
   }
 
   try {
