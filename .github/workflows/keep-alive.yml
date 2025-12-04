@@ -1,0 +1,43 @@
+name: Database Keep-Alive
+
+on:
+  schedule:
+    # Run every 10 hours (at minute 0 of every 10th hour: 0:00, 10:00, 20:00 UTC)
+    - cron: '0 0,10,20 * * *'
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    name: Ping SQLite Cloud Database
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Send keep-alive ping to database
+        run: |
+          echo "Sending keep-alive ping to database..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://crimewise-web-v2-ri4n.vercel.app/api/cron/keep-alive)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          echo "Response Status: $HTTP_CODE"
+          echo "Response Body: $BODY"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Keep-alive ping successful!"
+            exit 0
+          else
+            echo "❌ Keep-alive ping failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Log success
+        if: success()
+        run: echo "Database keep-alive completed successfully at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+
+      - name: Log failure
+        if: failure()
+        run: echo "Database keep-alive failed at $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
