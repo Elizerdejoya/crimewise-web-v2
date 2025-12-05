@@ -508,7 +508,33 @@ router.post(
       RETURNING id
     `;
 
-      res.json({ success: true, id: result[0].id });
+      const resultId = result[0].id;
+
+      // Queue for AI grading if exam has questions
+      try {
+        // Get questions for this exam
+        const questions = await db.sql`SELECT id FROM questions WHERE exam_id = ${exam_id} LIMIT 1`;
+        
+        if (questions && questions.length > 0) {
+          const questionId = questions[0].id;
+          
+          // Get a batch_id (use exam_id as batch_id for simplicity, or create one)
+          const batches = await db.sql`SELECT id FROM batches WHERE organization_id = ${userOrgId} LIMIT 1`;
+          const batchId = batches && batches[0] ? batches[0].id : 1;
+          
+          // Queue for AI grading
+          await db.sql`
+            INSERT INTO ai_queue (organization_id, batch_id, result_id, question_id, student_answer, status)
+            VALUES (${userOrgId}, ${batchId}, ${resultId}, ${questionId}, ${answer || null}, 'pending')
+          `;
+          console.log(`[EXAMS][SUBMIT] Queued result ${resultId} for AI grading`);
+        }
+      } catch (queueErr) {
+        // Don't fail the submit if queueing fails, just log it
+        console.warn(`[EXAMS][SUBMIT] Failed to queue AI grading: ${queueErr.message}`);
+      }
+
+      res.json({ success: true, id: resultId });
     } catch (err) {
       console.log("[EXAMS][SUBMIT] Error:", err.message);
       return res.status(500).json({ error: err.message });
