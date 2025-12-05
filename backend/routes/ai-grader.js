@@ -33,24 +33,17 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // For 300-concurrent burst load: skip DB lookup, just use provided values
-    // DB lookups during submit add unnecessary contention - worker can load them during processing
-    
-    // Quick validation
-    if (!studentId || !examId || !studentFindings) {
-      return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
-    }
-
-    // Insert job as pending with maximum retry tolerance for burst handling
+    // For 300-concurrent burst load: insert quickly with smart retries
+    // Use modest retry windows (not too aggressive) to avoid long connection holds
     await db.runWithRetry(
       () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 15, baseDelay: 150 }
+      { retries: 10, baseDelay: 100 }
     );
 
-    // Find the inserted job id to return to the client with same retry tolerance
+    // Find the inserted job id to return to the client
     const inserted = await db.runWithRetry(
       () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 15, baseDelay: 150 }
+      { retries: 10, baseDelay: 100 }
     );
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;

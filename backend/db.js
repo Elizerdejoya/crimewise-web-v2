@@ -1,6 +1,11 @@
 const { Database } = require("@sqlitecloud/drivers");
 
-// Connect to SQLite Cloud database 
+// SQLite Cloud connection limit: 30 concurrent connections (free tier)
+// Strategy: Minimize concurrent connections by:
+// 1. Keeping worker concurrency low (default 1)
+// 2. Using aggressive retry + backoff in submit route (don't create new connections for retries)
+// 3. Closing connections after each operation
+
 const db = new Database(
   process.env.DATABASE_URL || "sqlitecloud://cxd2tnbwvk.g5.sqlite.cloud:8860/crimewise?apikey=euIjfRGcZnywBxr10nuXqdrk6BXamqJZvXRalZPVWVg"
 );
