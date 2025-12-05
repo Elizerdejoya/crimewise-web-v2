@@ -1,22 +1,19 @@
 const { Pool } = require('pg');
 
-// PostgreSQL connection pool (Neon supports connection pooling natively)
-// Pool size: 5-10 connections per Vercel function (way less than SQLite Cloud's 30-connection limit)
+// PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 10, // Max connections per function instance
+  max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
 
-// Simple query wrapper that mimics the @sqlitecloud/drivers API
-// Usage: db.sql`SELECT * FROM users WHERE id = ${id}`
+// Query wrapper that mimics @sqlitecloud/drivers API
 class Database {
   constructor(pool) {
     this.pool = pool;
   }
 
-  // Tagged template function to handle SQL queries
   async sql(strings, ...values) {
     let query = strings[0];
     for (let i = 1; i < strings.length; i++) {
@@ -25,7 +22,6 @@ class Database {
     
     try {
       const result = await this.pool.query(query, values);
-      // Return rows in array format (matches SQLiteCloud driver behavior)
       return result.rows;
     } catch (err) {
       console.error('[DB] Query error:', err.message);
@@ -42,9 +38,9 @@ async function initializeSchema() {
   try {
     console.log('Initializing PostgreSQL schema...');
 
-    // Create organizations table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS organizations (
+    const tables = [
+      // Organizations
+      `CREATE TABLE IF NOT EXISTS organizations (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         domain TEXT UNIQUE,
@@ -57,27 +53,23 @@ async function initializeSchema() {
         max_storage_gb INTEGER DEFAULT 10,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create subscriptions table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS subscriptions (
+      // Subscriptions
+      `CREATE TABLE IF NOT EXISTS subscriptions (
         id SERIAL PRIMARY KEY,
         organization_id INTEGER NOT NULL REFERENCES organizations(id),
         plan_name TEXT NOT NULL,
         status TEXT DEFAULT 'active',
-        start_date TEXT NOT NULL,
-        end_date TEXT,
+        start_date TIMESTAMP NOT NULL,
+        end_date TIMESTAMP,
         monthly_price DECIMAL(10,2),
         features TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create users table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
+      // Users
+      `CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         email TEXT UNIQUE,
         password TEXT,
@@ -90,43 +82,35 @@ async function initializeSchema() {
         student_id TEXT,
         course_id INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create batches table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS batches (
+      // Batches
+      `CREATE TABLE IF NOT EXISTS batches (
         id SERIAL PRIMARY KEY,
         name TEXT,
         organization_id INTEGER REFERENCES organizations(id)
-      )
-    `);
+      )`,
 
-    // Create classes table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS classes (
+      // Classes
+      `CREATE TABLE IF NOT EXISTS classes (
         id SERIAL PRIMARY KEY,
         name TEXT,
         batch_id INTEGER REFERENCES batches(id),
         organization_id INTEGER REFERENCES organizations(id)
-      )
-    `);
+      )`,
 
-    // Create courses table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS courses (
+      // Courses
+      `CREATE TABLE IF NOT EXISTS courses (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         code TEXT DEFAULT NULL,
         description TEXT DEFAULT NULL,
         status TEXT DEFAULT 'active',
         organization_id INTEGER REFERENCES organizations(id)
-      )
-    `);
+      )`,
 
-    // Create results table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS results (
+      // Results
+      `CREATE TABLE IF NOT EXISTS results (
         id SERIAL PRIMARY KEY,
         student_id INTEGER REFERENCES users(id),
         exam_id INTEGER,
@@ -136,51 +120,41 @@ async function initializeSchema() {
         tab_switches INTEGER DEFAULT 0,
         details TEXT,
         explanation TEXT
-      )
-    `);
+      )`,
 
-    // Create relations table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS relations (
+      // Relations
+      `CREATE TABLE IF NOT EXISTS relations (
         id SERIAL PRIMARY KEY,
         type TEXT,
         class_id INTEGER,
         instructor_id INTEGER,
         batch_id INTEGER,
         course_id INTEGER
-      )
-    `);
+      )`,
 
-    // Create class_instructor table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS class_instructor (
+      // Class-Instructor mapping
+      `CREATE TABLE IF NOT EXISTS class_instructor (
         id SERIAL PRIMARY KEY,
         class_id INTEGER NOT NULL REFERENCES classes(id),
         instructor_id INTEGER NOT NULL REFERENCES users(id)
-      )
-    `);
+      )`,
 
-    // Create batch_course table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS batch_course (
+      // Batch-Course mapping
+      `CREATE TABLE IF NOT EXISTS batch_course (
         id SERIAL PRIMARY KEY,
         batch_id INTEGER NOT NULL REFERENCES batches(id),
         course_id INTEGER NOT NULL REFERENCES courses(id)
-      )
-    `);
+      )`,
 
-    // Create instructor_course table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS instructor_course (
+      // Instructor-Course mapping
+      `CREATE TABLE IF NOT EXISTS instructor_course (
         id SERIAL PRIMARY KEY,
         instructor_id INTEGER NOT NULL REFERENCES users(id),
         course_id INTEGER NOT NULL REFERENCES courses(id)
-      )
-    `);
+      )`,
 
-    // Create questions table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS questions (
+      // Questions
+      `CREATE TABLE IF NOT EXISTS questions (
         id SERIAL PRIMARY KEY,
         title TEXT NOT NULL,
         text TEXT,
@@ -198,12 +172,10 @@ async function initializeSchema() {
         created_by INTEGER REFERENCES users(id),
         organization_id INTEGER REFERENCES organizations(id),
         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create keyword_pools table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS keyword_pools (
+      // Keyword Pools
+      `CREATE TABLE IF NOT EXISTS keyword_pools (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         keywords TEXT NOT NULL,
@@ -211,12 +183,10 @@ async function initializeSchema() {
         organization_id INTEGER REFERENCES organizations(id),
         created_by INTEGER REFERENCES users(id),
         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create exams table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS exams (
+      // Exams
+      `CREATE TABLE IF NOT EXISTS exams (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         course_id INTEGER NOT NULL REFERENCES courses(id),
@@ -229,12 +199,10 @@ async function initializeSchema() {
         token TEXT UNIQUE NOT NULL,
         organization_id INTEGER REFERENCES organizations(id),
         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create ai_grades table (for AI grading results)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS ai_grades (
+      // AI Grades
+      `CREATE TABLE IF NOT EXISTS ai_grades (
         id SERIAL PRIMARY KEY,
         student_id INTEGER NOT NULL REFERENCES users(id),
         exam_id INTEGER NOT NULL,
@@ -247,12 +215,10 @@ async function initializeSchema() {
         raw_response TEXT,
         api_key_index INTEGER DEFAULT 0,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`,
 
-    // Create ai_queue table (for job processing)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS ai_queue (
+      // AI Queue - FIXED with all required columns
+      `CREATE TABLE IF NOT EXISTS ai_queue (
         id SERIAL PRIMARY KEY,
         student_id INTEGER NOT NULL,
         exam_id INTEGER NOT NULL,
@@ -263,8 +229,19 @@ async function initializeSchema() {
         last_error TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      )`
+    ];
+
+    // Execute all CREATE TABLE statements
+    for (const sql of tables) {
+      try {
+        await client.query(sql);
+      } catch (err) {
+        if (!err.message.includes('already exists')) {
+          throw err;
+        }
+      }
+    }
 
     console.log('PostgreSQL schema initialized successfully');
     return true;
@@ -285,14 +262,13 @@ const initPromise = (async () => {
     return true;
   } catch (err) {
     console.error('[DB] Error initializing schema:', err.message);
-    // Don't exit - let the app start and handle errors per-request
     return false;
   }
 })();
 
 db.initialized = initPromise;
 
-// Generic helper to run DB operations with retries
+// Retry helper
 async function runWithRetry(fn, opts = {}) {
   const retries = typeof opts.retries === 'number' ? opts.retries : 6;
   const baseDelay = typeof opts.baseDelay === 'number' ? opts.baseDelay : 150;
