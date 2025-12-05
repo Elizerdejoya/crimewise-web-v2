@@ -6,7 +6,7 @@ const BATCH_SIZE = 50; // Concurrent requests per batch
 const TOTAL_REQUESTS = 300;
 const LOGIN_EMAIL = 'student1@crimewise.com';
 const LOGIN_PASSWORD = 'studpass';
-const EXAM_ID = 1;
+const EXAM_ID = 3;  // Updated to match actual exam
 
 // Metrics
 let successful = 0;
