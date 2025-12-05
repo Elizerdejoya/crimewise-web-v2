@@ -3,62 +3,99 @@ const router = express.Router();
 const db = require('../db');
 const aiWorker = require('../ai-worker');
 
-// POST /api/ai-grader/submit
-// Enqueue a job into the DB-backed ai_queue
-router.post('/submit', async (req, res) => {
+// In-memory submission queue to handle burst load without exhausting DB connections
+// Max 5 concurrent submissions being processed; others queue
+const SUBMIT_CONCURRENCY = 2;
+let activeSubmits = 0;
+const submitQueue = [];
 
+async function processSubmit(job) {
   try {
-    const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
-    // Prefer teacherFindings sent by the frontend. If it's JSON, try to extract explanation text.
-    let teacherFindings = '';
-    if (reqTeacherFindings && String(reqTeacherFindings).trim()) {
-      try {
-        const maybe = typeof reqTeacherFindings === 'string' ? JSON.parse(reqTeacherFindings) : reqTeacherFindings;
-        if (maybe) {
-          // Try common shapes: { explanation: { text: '...' } } or { explanation: '...' }
-          if (maybe.explanation && typeof maybe.explanation === 'object' && maybe.explanation.text) {
-            teacherFindings = String(maybe.explanation.text);
-          } else if (maybe.explanation && typeof maybe.explanation === 'string') {
-            teacherFindings = String(maybe.explanation);
-          } else if (typeof maybe === 'string') {
-            teacherFindings = String(maybe);
-          } else {
-            // Fallback to JSON-stringified form
-            teacherFindings = JSON.stringify(maybe);
-          }
-        }
-      } catch (e) {
-        // Not JSON, use as-is
-        teacherFindings = String(reqTeacherFindings);
-      }
-    }
-
-    // For 300-concurrent burst load: insert quickly with smart retries
-    // Use modest retry windows (not too aggressive) to avoid long connection holds
+    const { studentId, examId, studentFindings, teacherFindings, resolve, reject } = job;
+    
+    // Insert with moderate retry to respect SQLite Cloud 30-connection limit
     await db.runWithRetry(
       () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 10, baseDelay: 100 }
+      { retries: 8, baseDelay: 80 }
     );
 
-    // Find the inserted job id to return to the client
     const inserted = await db.runWithRetry(
       () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 10, baseDelay: 100 }
+      { retries: 8, baseDelay: 80 }
     );
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;
 
-    // Kick the worker once in-process to reduce latency (non-blocking, local dev only)
-    try {
-      if (aiWorker && aiWorker.runOnce) {
-        aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
-      }
-    } catch (e) {
-      // Ignore errors from trying to trigger worker; job remains queued
+    resolve({ jobId, status: 'queued' });
+  } catch (err) {
+    reject(err);
+  }
+}
+
+async function drainSubmitQueue() {
+  while (activeSubmits < SUBMIT_CONCURRENCY && submitQueue.length > 0) {
+    const job = submitQueue.shift();
+    activeSubmits++;
+    processSubmit(job)
+      .catch((e) => console.error('[SUBMIT-QUEUE] Error processing job:', e && e.message ? e.message : e))
+      .finally(() => {
+        activeSubmits--;
+        if (submitQueue.length > 0) {
+          // Process next queued item
+          setImmediate(drainSubmitQueue);
+        }
+      });
+  }
+}
+
+// POST /api/ai-grader/submit
+// Enqueue a job into the DB-backed ai_queue (with client-side queuing to prevent connection exhaustion)
+router.post('/submit', async (req, res) => {
+
+  try {
+    const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
+    
+    if (!studentId || !examId || !studentFindings) {
+      return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
     }
 
-    // On Vercel, jobs will be processed by periodic /api/trigger-ai-worker calls
-    res.status(202).json({ message: 'Queued for AI grading', jobId });
+    // Parse teacherFindings
+    let teacherFindings = '';
+    if (reqTeacherFindings && String(reqTeacherFindings).trim()) {
+      try {
+        const maybe = typeof reqTeacherFindings === 'string' ? JSON.parse(reqTeacherFindings) : reqTeacherFindings;
+        if (maybe && typeof maybe === 'object') {
+          if (maybe.explanation && typeof maybe.explanation === 'object' && maybe.explanation.text) {
+            teacherFindings = String(maybe.explanation.text);
+          } else if (maybe.explanation && typeof maybe.explanation === 'string') {
+            teacherFindings = String(maybe.explanation);
+          } else {
+            teacherFindings = JSON.stringify(maybe);
+          }
+        } else if (typeof maybe === 'string') {
+          teacherFindings = String(maybe);
+        }
+      } catch (e) {
+        teacherFindings = String(reqTeacherFindings);
+      }
+    }
+
+    // Queue the submit job instead of processing immediately
+    // This ensures we don't exhaust SQLite Cloud's 30-connection limit
+    const result = await new Promise((resolve, reject) => {
+      submitQueue.push({
+        studentId,
+        examId,
+        studentFindings,
+        teacherFindings,
+        resolve,
+        reject
+      });
+      drainSubmitQueue();
+    });
+
+    // Return 202 Accepted immediately (job is queued, will be processed)
+    res.status(202).json({ message: 'Queued for AI grading', ...result });
   } catch (err) {
     console.error('[AI-GRADER][SUBMIT] Error:', err && err.stack ? err.stack : err.message || err);
     res.status(500).json({ error: 'Failed to submit for AI grading', details: err && err.message ? err.message : 'Unknown error' });
