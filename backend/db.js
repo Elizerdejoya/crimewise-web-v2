@@ -217,8 +217,8 @@ async function initializeSchema() {
       "Error initializing SQLite Cloud database schema:",
       err.message
     );
-    // Exit or handle error appropriately if schema initialization fails
-    process.exit(1);
+    // Throw so the outer initializer can handle failures gracefully
+    throw err;
   }
 }
 

@@ -5,6 +5,17 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Global error handlers to avoid serverless functions exiting the process
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[GLOBAL] Unhandled Rejection at:', promise, 'reason:', reason && reason.stack ? reason.stack : reason);
+  // don't exit - let the function return an error response instead
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[GLOBAL] Uncaught Exception:', err && err.stack ? err.stack : err);
+  // don't call process.exit in serverless environment
+});
+
 // Improved CORS configuration to handle redirects
 const corsOptions = {
   origin: function (origin, callback) {
@@ -245,8 +256,8 @@ if (require.main === module) {
       }
     })
     .catch((err) => {
-      console.error('Database initialization failed, exiting:', err && err.message ? err.message : err);
-      process.exit(1);
+      console.error('Database initialization failed (non-fatal):', err && err.message ? err.message : err);
+      // Do not exit the process in serverless. Let requests handle DB failures gracefully.
     });
 }
 
