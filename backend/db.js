@@ -1,14 +1,16 @@
-const { Database } = require("@sqlitecloud/drivers");
+// Auto-detect database type from DATABASE_URL
+const databaseUrl = process.env.DATABASE_URL || "sqlitecloud://cxd2tnbwvk.g5.sqlite.cloud:8860/crimewise?apikey=euIjfRGcZnywBxr10nuXqdrk6BXamqJZvXRalZPVWVg";
 
-// SQLite Cloud connection limit: 30 concurrent connections (free tier)
-// Strategy: Minimize concurrent connections by:
-// 1. Keeping worker concurrency low (default 1)
-// 2. Using aggressive retry + backoff in submit route (don't create new connections for retries)
-// 3. Closing connections after each operation
+if (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')) {
+  // Use PostgreSQL adapter
+  console.log('[DB] Using PostgreSQL adapter (Neon)');
+  module.exports = require('./db-postgres.js');
+} else {
+  // Use SQLite Cloud adapter (legacy)
+  console.log('[DB] Using SQLite Cloud adapter');
+  module.exports = require('./db-sqlite-cloud.js');
+}
 
-const db = new Database(
-  process.env.DATABASE_URL || "sqlitecloud://cxd2tnbwvk.g5.sqlite.cloud:8860/crimewise?apikey=euIjfRGcZnywBxr10nuXqdrk6BXamqJZvXRalZPVWVg"
-);
 
 // Function to initialize the database schema
 async function initializeSchema() {
