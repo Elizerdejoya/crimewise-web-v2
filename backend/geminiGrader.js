@@ -10,7 +10,7 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings,
   const tNorm = normalize(teacherFindings);
   const sNorm = normalize(studentFindings);
   
-  if (tNorm && sNorm && tNorm === sNorm) {
+    if (tNorm && sNorm && tNorm === sNorm) {
     console.log('[GRADER] EXACT MATCH DETECTED: Identical answers for student', studentId);
     const perfectScore = {
       accuracy: 100,
@@ -21,7 +21,7 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings,
     };
     const perfectFeedback = 'Perfect! Your findings match the teacher\'s answer exactly. You demonstrated excellent attention to detail and comprehensive understanding of the forensic analysis.';
     try {
-      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${perfectScore.overall}, ${perfectScore.accuracy}, ${perfectScore.completeness}, ${perfectScore.clarity}, ${perfectScore.objectivity}, ${perfectFeedback}, ${'EXACT_MATCH_PRECHECK'})`;
+      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${perfectScore.overall}, ${perfectScore.accuracy}, ${perfectScore.completeness}, ${perfectScore.clarity}, ${perfectScore.objectivity}, ${perfectFeedback}, ${'EXACT_MATCH_PRECHECK'}, ${null})`;
     } catch (dbErr) {
       console.error('[GRADER] Failed to save perfect score grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }
@@ -311,7 +311,7 @@ Return ONLY valid JSON with these exact fields:
     }
 
     try {
-      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${overall}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity}, ${feedback}, ${text})`;
+      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${overall}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity}, ${feedback}, ${text}, ${keyIndex})`;
     } catch (dbErr) {
       console.error('[GRADER] Failed to save AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }
@@ -344,7 +344,7 @@ Return ONLY valid JSON with these exact fields:
           const fallbackOverall = Math.round((fallbackAccuracy * (rubricWeights.accuracy || 0) + fallbackCompleteness * (rubricWeights.completeness || 0) + fallbackClarity * (rubricWeights.clarity || 0) + fallbackObjectivity * (rubricWeights.objectivity || 0)) / ((rubricWeights.accuracy || 0) + (rubricWeights.completeness || 0) + (rubricWeights.clarity || 0) + (rubricWeights.objectivity || 0)));
           const fallbackFeedback = 'Student findings match the teacher\'s findings exactly. Full marks awarded.';
           try {
-            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)})`;
+            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)}, ${null})`;
           } catch (dbErr) {
             console.error('[GRADER] Failed to save fallback AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
           }
@@ -373,7 +373,7 @@ Return ONLY valid JSON with these exact fields:
           const fallbackOverall = Math.round((fallbackAccuracy * (rubricWeights.accuracy || 0) + fallbackCompleteness * (rubricWeights.completeness || 0) + fallbackClarity * (rubricWeights.clarity || 0) + fallbackObjectivity * (rubricWeights.objectivity || 0)) / ((rubricWeights.accuracy || 0) + (rubricWeights.completeness || 0) + (rubricWeights.clarity || 0) + (rubricWeights.objectivity || 0)));
           const fallbackFeedback = 'Student findings are nearly identical to the teacher\'s findings. Full marks awarded.';
           try {
-            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)})`;
+            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)}, ${null})`;
           } catch (dbErr) {
             console.error('[GRADER] Failed to save fallback AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
           }
@@ -391,7 +391,7 @@ Return ONLY valid JSON with these exact fields:
           const fallbackOverall = Math.round((fallbackAccuracy * (rubricWeights.accuracy || 0) + fallbackCompleteness * (rubricWeights.completeness || 0) + fallbackClarity * (rubricWeights.clarity || 0) + fallbackObjectivity * (rubricWeights.objectivity || 0)) / totalW);
           const fallbackFeedback = `Student findings partially match the teacher's findings. Provisional score awarded due to service outage. Similarity: ${Math.round(similarity*100)}%.`;
           try {
-            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)})`;
+            await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)}, ${null})`;
           } catch (dbErr) {
             console.error('[GRADER] Failed to save fuzzy fallback AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
           }
@@ -405,7 +405,7 @@ Return ONLY valid JSON with these exact fields:
 
       console.error('[GRADER] Error calling Gemini:', err && err.message ? err.message : err, err && err.stack ? err.stack : 'no-stack');
       try {
-        await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, feedback, raw_response) VALUES (${studentId}, ${examId}, ${0}, ${String(err && err.message ? err.message : err)}, ${String(err && err.stack ? err.stack : '')})`;
+        await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${0}, ${String(err && err.message ? err.message : err)}, ${String(err && err.stack ? err.stack : '')}, ${null})`;
       } catch (dbErr) {
         console.error('[GRADER] Failed to save error grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
       }
@@ -415,7 +415,7 @@ Return ONLY valid JSON with these exact fields:
     // API call succeeded but we hit a processing/parsing error. Log details and save a failed grade (no fallback).
     console.error('[GRADER] Parsing/processing error after successful API call:', err && err.message ? err.message : err, err && err.stack ? err.stack : 'no-stack');
     try {
-      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, feedback, raw_response) VALUES (${studentId}, ${examId}, ${0}, ${String('Parsing or processing error')}, ${String(err && err.stack ? err.stack : '')})`;
+      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${0}, ${String('Parsing or processing error')}, ${String(err && err.stack ? err.stack : '')}, ${keyIndex})`;
     } catch (dbErr) {
       console.error('[GRADER] Failed to save parsing error grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }

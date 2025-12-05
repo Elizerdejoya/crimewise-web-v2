@@ -72,14 +72,18 @@ router.post('/submit', async (req, res) => {
     const jobId = jobRow ? jobRow.id : null;
 
     // Kick the worker once in-process to reduce latency (non-blocking)
+    // In Vercel serverless, this won't work, so we return immediately
     try {
-      // runOnce will schedule processing respecting concurrency/backoff; we don't await it here
-      aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
+      // If worker is available (local dev), process one job
+      if (aiWorker && aiWorker.runOnce) {
+        aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
+      }
     } catch (e) {
       // Ignore errors from trying to trigger worker; job remains queued
       console.error('[AI-GRADER] Failed to trigger ai worker:', e && e.message ? e.message : e);
     }
 
+    // On Vercel, jobs will be processed by periodic /api/trigger-ai-worker calls
     res.status(202).json({ message: 'Queued for AI grading', jobId });
   } catch (err) {
     console.error('[AI-GRADER][SUBMIT] Error:', err && err.message ? err.message : err);

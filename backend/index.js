@@ -158,6 +158,36 @@ app.get("/api/monitor/ai-worker", async (req, res) => {
   }
 });
 
+// Aggregated AI grades by API key index
+app.get('/api/monitor/ai-grades-by-key', async (req, res) => {
+  try {
+    const rows = await db.sql`SELECT api_key_index, COUNT(*) as count, AVG(score) as avg_score FROM ai_grades GROUP BY api_key_index ORDER BY api_key_index`;
+    res.json({ status: 'ok', timestamp: new Date().toISOString(), data: rows });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to aggregate grades by API key', details: err && err.message ? err.message : err });
+  }
+});
+
+// Trigger AI worker to process pending jobs (for serverless/Vercel compatibility)
+app.post('/api/trigger-ai-worker', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit || 6);
+    const aiWorker = require('./ai-worker');
+    const processed = await aiWorker.runOnce(limit);
+    res.json({ 
+      status: 'ok',
+      processed,
+      message: `Processed ${processed} job(s)`
+    });
+  } catch (err) {
+    console.error('[TRIGGER-WORKER] Error:', err && err.message ? err.message : err);
+    res.status(500).json({
+      error: 'Failed to trigger worker',
+      details: err && err.message ? err.message : err
+    });
+  }
+});
+
 // Health check endpoint for Vercel
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });

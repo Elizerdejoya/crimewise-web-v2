@@ -5,10 +5,27 @@
  * Tests if the API can handle 250-300 concurrent requests
  */
 
-const http = require('http');
+// Suppress dotenv from auto-loading in this standalone test
+delete require.cache[require.resolve('dotenv')];
 
-const baseUrl = 'http://localhost:5000';
-const studentCount = 250;
+const http = require('http');
+const https = require('https');
+const url = require('url');
+
+// Parse CLI arguments
+const args = process.argv.slice(2);
+let studentCount = 300; // Default to 300 for stress test
+let baseUrl = 'https://crimewise-web-v2-ri4n.vercel.app'; // Use deployed backend
+
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--students' && args[i + 1]) {
+    studentCount = parseInt(args[i + 1], 10);
+    i++;
+  } else if (args[i] === '--url' && args[i + 1]) {
+    baseUrl = args[i + 1];
+    i++;
+  }
+}
 
 let completed = 0;
 let success = 0;
@@ -28,31 +45,38 @@ function testRequest(studentId) {
       studentFindings: 'The handwriting shows a rightward slant of approximately 45 degrees'
     });
 
+    const parsedUrl = new url.URL(baseUrl);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    
     const options = {
-      hostname: 'localhost',
-      port: 5000,
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
       path: '/api/ai-grader/submit',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       },
-      timeout: 5000
+      timeout: 10000
     };
 
-    const req = http.request(options, (res) => {
+    const req = protocol.request(options, (res) => {
       let data = '';
       res.on('data', (c) => data += c);
       res.on('end', () => {
         completed++;
         if (res.statusCode >= 200 && res.statusCode < 300) {
           success++;
+          if (success <= 3) console.log(`  ✓ Student ${studentId}: queued (job ID received)`);
         } else {
           failed++;
-          if (failed <= 3) console.log(`❌ ${studentId}: HTTP ${res.statusCode}`);
+          if (failed <= 3) {
+            console.log(`  ❌ Student ${studentId}: HTTP ${res.statusCode}`);
+            if (data) console.log(`     Response: ${data.substring(0, 200)}`);
+          }
         }
         if (completed % 50 === 0) {
-          console.log(`  Sent ${completed}/${studentCount}...`);
+          console.log(`  📊 ${completed}/${studentCount} submitted...`);
         }
         resolve();
       });
@@ -61,7 +85,7 @@ function testRequest(studentId) {
     req.on('error', (err) => {
       completed++;
       failed++;
-      if (failed <= 3) console.log(`❌ ${studentId}: ${err.code || err.message}`);
+      if (failed <= 3) console.log(`  ❌ Student ${studentId}: ${err.code || err.message}`);
       resolve();
     });
 
