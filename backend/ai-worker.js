@@ -206,6 +206,36 @@ function stop() {
 
 module.exports = { start, stop, runOnce };
 
+// Drain once: process up to `limit` jobs and wait for started jobs to finish (serverless-safe helper)
+async function drainOnce(limit = MAX_CONCURRENCY, timeoutMs = 30000) {
+  const start = Date.now();
+  let totalProcessed = 0;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const processed = await runOnce(limit);
+      totalProcessed += processed;
+
+      // Wait for active workers to finish the current batch (bounded wait)
+      const waitStart = Date.now();
+      while (active > 0 && Date.now() - waitStart < Math.min(10000, timeoutMs)) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // If no work was picked up this round, break early
+      if (!processed) break;
+
+      // small backoff between rounds
+      await new Promise((r) => setTimeout(r, 200));
+    } catch (e) {
+      console.error('[AI-WORKER] drainOnce caught error:', e && e.message ? e.message : e);
+      break;
+    }
+  }
+  return totalProcessed;
+}
+
+module.exports = { start, stop, runOnce, drainOnce };
+
 // Helper: run DB update with retries on SQLITE_BUSY or transient errors
 async function runDbUpdateWithRetry(jobId, dbFn, retries = 5) {
   for (let attempt = 1; attempt <= retries; attempt++) {

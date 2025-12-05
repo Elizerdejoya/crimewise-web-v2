@@ -183,13 +183,27 @@ app.get('/api/monitor/ai-grades-by-key', async (req, res) => {
 app.post('/api/trigger-ai-worker', async (req, res) => {
   try {
     const limit = Number(req.query.limit || 6);
+    const rounds = Number(req.query.rounds || 3);
+    const timeoutMs = Number(req.query.timeoutMs || 30000);
     const aiWorker = require('./ai-worker');
-    const processed = await aiWorker.runOnce(limit);
-    res.json({ 
-      status: 'ok',
-      processed,
-      message: `Processed ${processed} job(s)`
-    });
+
+    // Attempt to drain multiple rounds within a single invocation. This helps serverless
+    // functions process more items per invocation while bounding total time.
+    let totalProcessed = 0;
+    for (let r = 0; r < rounds; r++) {
+      try {
+        const processed = typeof aiWorker.drainOnce === 'function'
+          ? await aiWorker.drainOnce(limit, Math.floor(timeoutMs / rounds))
+          : await aiWorker.runOnce(limit);
+        totalProcessed += processed;
+        if (!processed) break; // nothing left
+      } catch (e) {
+        console.error('[TRIGGER-WORKER] round error:', e && e.message ? e.message : e);
+        break;
+      }
+    }
+
+    res.json({ status: 'ok', processed: totalProcessed, message: `Processed ${totalProcessed} job(s)` });
   } catch (err) {
     console.error('[TRIGGER-WORKER] Error:', err && err.message ? err.message : err);
     res.status(500).json({

@@ -245,4 +245,27 @@ const initPromise = (async () => {
 // expose the initialization promise on the db object so callers can wait for it
 db.initialized = initPromise;
 
+// Generic helper to run a DB operation with retries on transient errors (eg. SQLITE_BUSY)
+async function runWithRetry(fn, opts = {}) {
+  const retries = typeof opts.retries === 'number' ? opts.retries : 6;
+  const baseDelay = typeof opts.baseDelay === 'number' ? opts.baseDelay : 150;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const m = err && err.message ? String(err.message) : String(err || '');
+      if (m.toLowerCase().includes('busy') && attempt < retries) {
+        const wait = baseDelay * attempt;
+        console.warn(`[DB] Operation busy, retrying after ${wait}ms (attempt ${attempt}/${retries})`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      // Not a transient busy error or no retries left
+      throw err;
+    }
+  }
+}
+
+db.runWithRetry = runWithRetry;
+
 module.exports = db;

@@ -63,11 +63,11 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // Insert job as pending and return immediately (enqueue-only)
-    await db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`;
+    // Insert job as pending and return only after DB confirms the insert (with retries on busy)
+    await db.runWithRetry(() => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`);
 
-    // Find the inserted job id to return to the client
-    const inserted = await db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`;
+    // Find the inserted job id to return to the client (use retry helper)
+    const inserted = await db.runWithRetry(() => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`);
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;
 
@@ -219,7 +219,7 @@ router.post('/requeue', async (req, res) => {
     }
 
     // Insert a new pending queue row (non-destructive) to trigger processing, including findings when available
-    await db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`;
+    await db.runWithRetry(() => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`);
 
     // Trigger worker to process quickly
     try { aiWorker.runOnce(1).catch(e => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e)); } catch (e) { /* ignore */ }
