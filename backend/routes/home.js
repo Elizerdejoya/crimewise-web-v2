@@ -307,6 +307,7 @@ router.post("/api/login", async (req, res) => {
       `[LOGIN] Login successful: ${email}, role: ${user.role}`
     );
     res.json({
+      id: user.id,
       token,
       role: user.role,
       ...(user.organization_id && { organization_id: user.organization_id }),
