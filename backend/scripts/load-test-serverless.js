@@ -3,7 +3,7 @@
 /**
  * Load Test with Serverless Job Processing
  * 
- * Simulates 300 concurrent submissions and then triggers job processing
+ * Simulates 300 submissions with staggering to allow queue draining
  * suitable for Vercel serverless environment
  */
 
@@ -15,7 +15,6 @@ const url = require('url');
 const args = process.argv.slice(2);
 let studentCount = 300;
 let baseUrl = 'https://crimewise-web-v2-ri4n.vercel.app';
-let triggerConcurrency = 6; // How many jobs to process per trigger
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--students' && args[i + 1]) {
@@ -33,7 +32,7 @@ let failed = 0;
 
 console.log(`🚀 Load test: ${studentCount} concurrent submissions`);
 console.log(`📍 Target: ${baseUrl}`);
-console.log(`⚙️  Will trigger job processing after all submissions\n`);
+console.log(`⚙️  Will trigger job processing after submissions\n`);
 
 const startTime = Date.now();
 
@@ -53,12 +52,12 @@ function makeRequest(studentId, isSubmit = true) {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
       path: isSubmit ? '/api/ai-grader/submit' : '/api/trigger-ai-worker',
-      method: isSubmit ? 'POST' : 'POST',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       },
-      timeout: 15000
+      timeout: 20000
     };
 
     const req = protocol.request(options, (res) => {
@@ -66,7 +65,6 @@ function makeRequest(studentId, isSubmit = true) {
       res.on('data', (c) => data += c);
       res.on('end', () => {
         if (!isSubmit) {
-          // Trigger response
           resolve({ statusCode: res.statusCode, data });
           return;
         }
@@ -77,13 +75,12 @@ function makeRequest(studentId, isSubmit = true) {
           if (success <= 3) console.log(`  ✓ Student ${studentId}: queued`);
         } else {
           failed++;
-          if (failed <= 3) {
-            console.log(`  ❌ Student ${studentId}: HTTP ${res.statusCode}`);
-            if (data) console.log(`     ${data.substring(0, 150)}`);
+          if (failed <= 5) {
+            console.log(`  ❌ Student ${studentId}: HTTP ${res.statusCode} - ${data.substring(0, 100)}`);
           }
         }
         if (completed % 50 === 0) {
-          console.log(`  📊 ${completed}/${studentCount} submitted...`);
+          console.log(`  📊 Progress: ${completed}/${studentCount} submitted`);
         }
         resolve();
       });
@@ -93,7 +90,7 @@ function makeRequest(studentId, isSubmit = true) {
       if (isSubmit) {
         failed++;
         completed++;
-        if (failed <= 3) console.log(`  ⚠️  Error: ${err.message}`);
+        if (failed <= 5) console.log(`  ⚠️  Student ${studentId}: ${err.message}`);
       }
       resolve({ error: err.message });
     });

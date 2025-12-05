@@ -33,68 +33,42 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // If still empty, fallback to loading from DB (question.explanation or answer.explanation.text)
-    if (!teacherFindings || !teacherFindings.trim()) {
-      try {
-        const examRow = await db.sql`SELECT * FROM exams WHERE id = ${examId} LIMIT 1`;
-        const exam = Array.isArray(examRow) ? examRow[0] : examRow;
-        if (exam && exam.question_id) {
-          const qRow = await db.sql`SELECT * FROM questions WHERE id = ${exam.question_id} LIMIT 1`;
-          const question = Array.isArray(qRow) ? qRow[0] : qRow;
-          if (question) {
-            if (question.explanation && String(question.explanation).trim()) {
-              teacherFindings = question.explanation;
-            } else if (question.answer) {
-              try {
-                const answerObj = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
-                if (answerObj && answerObj.explanation && answerObj.explanation.text) {
-                  teacherFindings = answerObj.explanation.text;
-                } else if (answerObj && answerObj.explanation && typeof answerObj.explanation === 'string') {
-                  teacherFindings = answerObj.explanation;
-                }
-              } catch (jsonErr) {
-                // ignore parse errors
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[AI-GRADER][SUBMIT] Could not load instructor explanation from DB:', e && e.message ? e.message : e);
-      }
+    // For 300-concurrent burst load: skip DB lookup, just use provided values
+    // DB lookups during submit add unnecessary contention - worker can load them during processing
+    
+    // Quick validation
+    if (!studentId || !examId || !studentFindings) {
+      return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
     }
 
-    // Insert job as pending and return only after DB confirms the insert
-    // Use very aggressive retry tolerance (12 retries × 200ms = up to 2.8s total backoff) for burst handling
+    // Insert job as pending with maximum retry tolerance for burst handling
     await db.runWithRetry(
       () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 12, baseDelay: 200 }
+      { retries: 15, baseDelay: 150 }
     );
 
-    // Find the inserted job id to return to the client (use same aggressive-retry tolerance)
+    // Find the inserted job id to return to the client with same retry tolerance
     const inserted = await db.runWithRetry(
       () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 12, baseDelay: 200 }
+      { retries: 15, baseDelay: 150 }
     );
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;
 
-    // Kick the worker once in-process to reduce latency (non-blocking)
-    // In Vercel serverless, this won't work, so we return immediately
+    // Kick the worker once in-process to reduce latency (non-blocking, local dev only)
     try {
-      // If worker is available (local dev), process one job
       if (aiWorker && aiWorker.runOnce) {
         aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
       }
     } catch (e) {
       // Ignore errors from trying to trigger worker; job remains queued
-      console.error('[AI-GRADER] Failed to trigger ai worker:', e && e.message ? e.message : e);
     }
 
     // On Vercel, jobs will be processed by periodic /api/trigger-ai-worker calls
     res.status(202).json({ message: 'Queued for AI grading', jobId });
   } catch (err) {
-    console.error('[AI-GRADER][SUBMIT] Error:', err && err.message ? err.message : err);
-    res.status(500).json({ error: 'Failed to submit for AI grading' });
+    console.error('[AI-GRADER][SUBMIT] Error:', err && err.stack ? err.stack : err.message || err);
+    res.status(500).json({ error: 'Failed to submit for AI grading', details: err && err.message ? err.message : 'Unknown error' });
   }
 });
 
