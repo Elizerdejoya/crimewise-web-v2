@@ -3,53 +3,8 @@ const router = express.Router();
 const db = require('../db');
 const aiWorker = require('../ai-worker');
 
-// In-memory submission queue to handle burst load without exhausting DB connections
-// Max 5 concurrent submissions being processed; others queue
-const SUBMIT_CONCURRENCY = 2;
-let activeSubmits = 0;
-const submitQueue = [];
-
-async function processSubmit(job) {
-  try {
-    const { studentId, examId, studentFindings, teacherFindings, resolve, reject } = job;
-    
-    // Insert with moderate retry to respect SQLite Cloud 30-connection limit
-    await db.runWithRetry(
-      () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 8, baseDelay: 80 }
-    );
-
-    const inserted = await db.runWithRetry(
-      () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 8, baseDelay: 80 }
-    );
-    const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
-    const jobId = jobRow ? jobRow.id : null;
-
-    resolve({ jobId, status: 'queued' });
-  } catch (err) {
-    reject(err);
-  }
-}
-
-async function drainSubmitQueue() {
-  while (activeSubmits < SUBMIT_CONCURRENCY && submitQueue.length > 0) {
-    const job = submitQueue.shift();
-    activeSubmits++;
-    processSubmit(job)
-      .catch((e) => console.error('[SUBMIT-QUEUE] Error processing job:', e && e.message ? e.message : e))
-      .finally(() => {
-        activeSubmits--;
-        if (submitQueue.length > 0) {
-          // Process next queued item
-          setImmediate(drainSubmitQueue);
-        }
-      });
-  }
-}
-
 // POST /api/ai-grader/submit
-// Enqueue a job into the DB-backed ai_queue (with client-side queuing to prevent connection exhaustion)
+// Enqueue a job into the DB-backed ai_queue
 router.post('/submit', async (req, res) => {
 
   try {
@@ -80,22 +35,32 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // Queue the submit job instead of processing immediately
-    // This ensures we don't exhaust SQLite Cloud's 30-connection limit
-    const result = await new Promise((resolve, reject) => {
-      submitQueue.push({
-        studentId,
-        examId,
-        studentFindings,
-        teacherFindings,
-        resolve,
-        reject
-      });
-      drainSubmitQueue();
-    });
+    // SQLite Cloud 30-connection limit: use SHORT retry windows to release connections fast
+    // Retries 5×50ms = max 250ms total per operation, so connections don't hold long
+    await db.runWithRetry(
+      () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
+      { retries: 5, baseDelay: 50 }
+    );
 
-    // Return 202 Accepted immediately (job is queued, will be processed)
-    res.status(202).json({ message: 'Queued for AI grading', ...result });
+    // Find the inserted job id to return to the client (also short retry)
+    const inserted = await db.runWithRetry(
+      () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
+      { retries: 5, baseDelay: 50 }
+    );
+    const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
+    const jobId = jobRow ? jobRow.id : null;
+
+    // Kick the worker once in-process to reduce latency (non-blocking, local dev only)
+    try {
+      if (aiWorker && aiWorker.runOnce) {
+        aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
+      }
+    } catch (e) {
+      // Ignore errors from trying to trigger worker; job remains queued
+    }
+
+    // Return 202 Accepted (job queued for processing)
+    res.status(202).json({ message: 'Queued for AI grading', jobId });
   } catch (err) {
     console.error('[AI-GRADER][SUBMIT] Error:', err && err.stack ? err.stack : err.message || err);
     res.status(500).json({ error: 'Failed to submit for AI grading', details: err && err.message ? err.message : 'Unknown error' });
