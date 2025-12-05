@@ -28,7 +28,7 @@ async function pickJob() {
     WHERE status = 'pending'
       AND (
         attempts = 0
-        OR (strftime('%s','now') - strftime('%s', updated_at)) > attempts * 60
+        OR (EXTRACT(EPOCH FROM NOW()) - EXTRACT(EPOCH FROM updated_at)) > attempts * 60
       )
     ORDER BY id ASC
     LIMIT 1
