@@ -113,18 +113,18 @@ function makeRequest(studentId, isSubmit = true) {
 }
 
 async function run() {
-  // Phase 1: Submit all jobs with staggering to reduce serverless cold-start overload
-  console.log('Phase 1: Submitting jobs (staggered)...\n');
+  // Phase 1: Submit all jobs with aggressive staggering to minimize DB contention
+  console.log('Phase 1: Submitting jobs (staggered for 300 concurrent)...\n');
   const submitPromises = [];
-  const STAGGER_MS = 8; // 8ms stagger = ~125 req/s spread over 2.4s for 300 req
+  const STAGGER_MS = 15; // 15ms stagger = ~67 req/s spread over ~4.5s for 300 req
   for (let i = 1; i <= studentCount; i++) {
     submitPromises.push(makeRequest(i, true));
-    // Stagger submissions to avoid thundering herd and reduce cold-start failures
-    if (i % 30 === 0) {
-      // Every 30 requests, wait a bit to let previous batch settle
-      await new Promise(r => setTimeout(r, STAGGER_MS * 30));
+    // Stagger submissions more aggressively to avoid DB lock contention
+    if (i % 25 === 0) {
+      // Every 25 requests, wait 400ms to let DB settle
+      await new Promise(r => setTimeout(r, 400));
     } else if (i % 10 === 0) {
-      // Small stagger between requests to spread load
+      // Regular stagger between batches
       await new Promise(r => setTimeout(r, STAGGER_MS));
     }
   }

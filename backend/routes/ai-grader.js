@@ -64,16 +64,16 @@ router.post('/submit', async (req, res) => {
     }
 
     // Insert job as pending and return only after DB confirms the insert
-    // Use higher retry counts to tolerate DB contention during 300-concurrent submit bursts
+    // Use very aggressive retry tolerance (12 retries × 200ms = up to 2.8s total backoff) for burst handling
     await db.runWithRetry(
       () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 8, baseDelay: 300 }
+      { retries: 12, baseDelay: 200 }
     );
 
-    // Find the inserted job id to return to the client (use same high-retry tolerance)
+    // Find the inserted job id to return to the client (use same aggressive-retry tolerance)
     const inserted = await db.runWithRetry(
       () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 8, baseDelay: 300 }
+      { retries: 12, baseDelay: 200 }
     );
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;
