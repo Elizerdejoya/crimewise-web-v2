@@ -501,8 +501,8 @@ router.post(
       }
 
       const result = await db.sql`
-      INSERT INTO results (student_id, exam_id, score, date, answer, tab_switches, details, explanation) 
-      VALUES (${student_id}, ${exam_id}, ${score}, ${date}, ${answer}, ${
+      INSERT INTO results (organization_id, student_id, exam_id, score, date, answer, tab_switches, details, explanation) 
+      VALUES (${userOrgId}, ${student_id}, ${exam_id}, ${score}, ${date}, ${answer}, ${
         tab_switches || 0
       }, ${details || null}, ${explanation || null})
       RETURNING id
