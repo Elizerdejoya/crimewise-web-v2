@@ -63,11 +63,18 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // Insert job as pending and return only after DB confirms the insert (with retries on busy)
-    await db.runWithRetry(() => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`);
+    // Insert job as pending and return only after DB confirms the insert
+    // Use higher retry counts to tolerate DB contention during 300-concurrent submit bursts
+    await db.runWithRetry(
+      () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
+      { retries: 8, baseDelay: 300 }
+    );
 
-    // Find the inserted job id to return to the client (use retry helper)
-    const inserted = await db.runWithRetry(() => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`);
+    // Find the inserted job id to return to the client (use same high-retry tolerance)
+    const inserted = await db.runWithRetry(
+      () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
+      { retries: 8, baseDelay: 300 }
+    );
     const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
     const jobId = jobRow ? jobRow.id : null;
 

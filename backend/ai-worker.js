@@ -12,7 +12,7 @@ const apiKeyManager = require('./apiKeyManager');
 // - Implements retry logic with exponential backoff
 
 const POLL_INTERVAL_MS = Number(process.env.AI_WORKER_POLL_MS || 2000);
-const MAX_CONCURRENCY = Number(process.env.AI_WORKER_CONCURRENCY || 6); // 6 = one per API key
+const MAX_CONCURRENCY = Number(process.env.AI_WORKER_CONCURRENCY || 3); // Default 3 to reduce serverless resource contention
 const MAX_RETRIES = Number(process.env.AI_WORKER_MAX_RETRIES || 3);
 const MIN_REQUEST_INTERVAL_MS = 7500; // 7.5 seconds = 8 requests per 60 seconds (safe margin)
 
