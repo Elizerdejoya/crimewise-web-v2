@@ -1,5 +1,9 @@
+// Load environment variables
+require('dotenv').config();
+
 // Auto-detect database type from DATABASE_URL
-const databaseUrl = process.env.DATABASE_URL || "sqlitecloud://cxd2tnbwvk.g5.sqlite.cloud:8860/crimewise?apikey=euIjfRGcZnywBxr10nuXqdrk6BXamqJZvXRalZPVWVg";
+const databaseUrl = process.env.DATABASE_URL || "postgresql://neondb_owner:npg_LufDJkmlC79x@ep-odd-bush-a18tlvck-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+;
 
 if (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')) {
   // Use PostgreSQL adapter
