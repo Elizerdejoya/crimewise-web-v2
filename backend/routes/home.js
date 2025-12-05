@@ -5,6 +5,9 @@ const { SignJWT } = require("jose");
 const { authenticateToken, addOrganizationFilter } = require("../middleware");
 const SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
+// Polyfill TextEncoder for Node.js compatibility (Vercel serverless)
+const { TextEncoder } = require("util");
+
 // Home/test endpoint: show tables, endpoints, and test forms
 // router.get('/', async (req, res) => {
 //   try {
@@ -234,24 +237,29 @@ router.post("/api/login", async (req, res) => {
     // Try to find user by email (ignoring role, we'll auto-detect from DB)
     // First check super_admin
     let user = null;
-    let users = await db.sql`SELECT * FROM users WHERE email = ${email} AND role = 'super_admin'`;
-    
-    if (users && users.length > 0) {
-      user = users[0];
-      console.log(`[LOGIN] Found super admin: ${email}`);
-    } else {
-      // Try other roles (admin, instructor, student)
-      users = await db.sql`
-        SELECT u.*, o.name as organization_name, o.status as org_status 
-        FROM users u 
-        LEFT JOIN organizations o ON u.organization_id = o.id 
-        WHERE u.email = ${email}
-      `;
+    try {
+      let users = await db.sql`SELECT * FROM users WHERE email = ${email} AND role = 'super_admin'`;
       
       if (users && users.length > 0) {
         user = users[0];
-        console.log(`[LOGIN] Found ${user.role} user: ${email}`);
+        console.log(`[LOGIN] Found super admin: ${email}`);
+      } else {
+        // Try other roles (admin, instructor, student)
+        users = await db.sql`
+          SELECT u.*, o.name as organization_name, o.status as org_status 
+          FROM users u 
+          LEFT JOIN organizations o ON u.organization_id = o.id 
+          WHERE u.email = ${email}
+        `;
+        
+        if (users && users.length > 0) {
+          user = users[0];
+          console.log(`[LOGIN] Found ${user.role} user: ${email}`);
+        }
       }
+    } catch (dbErr) {
+      console.error(`[LOGIN] DB error while fetching user: ${dbErr.message}`);
+      return res.status(500).json({ error: "Database query failed" });
     }
 
     if (!user) {
@@ -274,7 +282,8 @@ router.post("/api/login", async (req, res) => {
         .json({ error: "Organization account is inactive" });
     }
 
-    const secret = new TextEncoder().encode(SECRET);
+    // Use Buffer.from() for cross-platform compatibility (works in Node.js and Vercel)
+    const secret = Buffer.from(SECRET, 'utf8');
     
     // Build JWT payload based on user role
     let jwtPayload = {
@@ -304,8 +313,8 @@ router.post("/api/login", async (req, res) => {
       ...(user.organization_name && { organization_name: user.organization_name }),
     });
   } catch (err) {
-    console.log("[HOME][LOGIN] Error:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("[HOME][LOGIN] Error:", err && err.stack ? err.stack : err.message);
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
