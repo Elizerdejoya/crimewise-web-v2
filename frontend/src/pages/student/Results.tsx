@@ -53,6 +53,7 @@ const Results = () => {
   const { toast } = useToast();
   const [aiScores, setAiScores] = useState<Record<string, number | null>>({});
   const [courses, setCourses] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const isMobileDevice = () => typeof window !== 'undefined' && (window.matchMedia?.('(max-width: 600px)')?.matches || /Mobi|Android/i.test(navigator.userAgent));
 
@@ -90,6 +91,13 @@ const Results = () => {
           .then((r) => r.ok ? r.json() : [])
           .then((courseList) => {
             if (Array.isArray(courseList)) setCourses(courseList);
+          })
+          .catch(() => {});
+        // fetch exams for name mapping
+        fetch(`${API_BASE_URL}/api/exams`, { headers: getAuthHeaders() })
+          .then((r) => r.ok ? r.json() : [])
+          .then((examList) => {
+            if (Array.isArray(examList)) setExams(examList);
           })
           .catch(() => {});
       })
@@ -153,6 +161,13 @@ const Results = () => {
     if (!cid) return cid || '';
     const found = courses.find((c) => String(c.id) === String(cid) || String(c.course_id) === String(cid) || String(c.name) === String(cid));
     return found ? found.name || found.course || String(cid) : String(cid);
+  };
+
+  // Resolve exam name from exams list or fallback to id/string
+  const resolveExamName = (eid: any) => {
+    if (!eid) return eid || '';
+    const found = exams.find((e) => String(e.id) === String(eid) || String(e.exam_id) === String(eid) || String(e.name) === String(eid));
+    return found ? found.name || String(eid) : String(eid);
   };
 
   // Default rubric weights used for fallback distribution when component scores are missing/zero
@@ -845,7 +860,7 @@ const Results = () => {
       totalPoints,
       earnedPoints,
       score,
-      examName: result.examName || result.exam_name || result.name || `Exam ${result.exam_id}`,
+      examName: resolveExamName(result.exam_id) || result.examName || result.exam_name || result.name || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
   }).sort((a, b) => {
