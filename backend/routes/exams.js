@@ -229,9 +229,29 @@ router.post(
 
       const token = generateToken();
 
+      // Convert naive ISO strings with timezone offset to UTC
+      // timezone_offset from browser is in minutes: positive for west of UTC, negative for east
+      // Philippines: UTC+8 → getTimezoneOffset() returns -480
+      // To convert local time to UTC: UTC = local - offset
+      let startUTC = start;
+      let endUTC = end;
+      
+      if (req.body.timezone_offset !== undefined) {
+        const offset = req.body.timezone_offset; // in minutes (e.g., -480 for UTC+8)
+        const startDate = new Date(`${start}Z`); // Parse as UTC first
+        const endDate = new Date(`${end}Z`);
+        
+        // Convert local time to UTC by subtracting the offset
+        // Example: 11:30 local (UTC+8) → 11:30 - (-480min) = 11:30 + 8h = wrong!
+        // Should be: 11:30 - 480min = 03:30 UTC
+        // So we need to add the offset (since offset is negative for east timezones)
+        startUTC = new Date(startDate.getTime() + offset * 60000).toISOString();
+        endUTC = new Date(endDate.getTime() + offset * 60000).toISOString();
+      }
+
       const result = await db.sql`
       INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
-      VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
+      VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${startUTC}, ${endUTC}, ${duration}, ${token})
       RETURNING id
     `;
 
@@ -876,9 +896,24 @@ router.post(
 
           const token = generateToken();
 
+          // Convert naive ISO strings with timezone offset to UTC
+          // timezone_offset from browser is in minutes: positive for west of UTC, negative for east
+          // Philippines: UTC+8 → getTimezoneOffset() returns -480
+          let startUTC = start;
+          let endUTC = end;
+          
+          if (req.body.timezone_offset !== undefined) {
+            const offset = req.body.timezone_offset;
+            const startDate = new Date(`${start}Z`);
+            const endDate = new Date(`${end}Z`);
+            // Convert local time to UTC by adding the offset (offset is negative for east timezones)
+            startUTC = new Date(startDate.getTime() + offset * 60000).toISOString();
+            endUTC = new Date(endDate.getTime() + offset * 60000).toISOString();
+          }
+
           const result = await db.sql`
           INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
-          VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
+          VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${startUTC}, ${endUTC}, ${duration}, ${token})
           RETURNING id
         `;
 
