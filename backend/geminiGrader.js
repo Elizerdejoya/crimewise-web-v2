@@ -60,26 +60,21 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings,
   const prompt = `You are a forensic handwriting analysis expert grading student work. Compare the student's findings to the teacher's official findings (the answer key).
 
 CRITICAL RULES FOR 100% SCORING:
-- If the student's findings are identical to the teacher's answer key → assign 100 to ALL components (accuracy, completeness, clarity, objectivity).
-- If the student's findings match the teacher's findings with only minor wording differences → assign 100 to accuracy, completeness, and objectivity (clarity can be 95-100 based on language quality).
-- If all major points from the answer key are covered with no missing details → assign 100 to completeness.
-- EXAMPLES:
-  • If teacher says: "The handwriting shows a rightward slant of approximately 45 degrees with moderate pressure"
-    And student says: "The handwriting shows a rightward slant with moderate pressure at about 45 degrees"
-    → This is ESSENTIALLY IDENTICAL → assign 100 to accuracy, completeness, clarity, objectivity.
+- If the student's findings are IDENTICAL or nearly identical to the teacher's answer key → assign 100 to ALL components (accuracy, completeness, clarity, objectivity).
+- No minor deductions for identical answers. Deduct points ONLY if information is incorrect, missing, or contradicts the answer key.
 
-Grading criteria (importance):
-1. Accuracy (${rubricWeights.accuracy}%) - Does the student's findings match the teacher's findings? For exact matches or matches with only rewording, give 100. Deduct points only if information is incorrect or contradicts the answer key.
-2. Completeness (${rubricWeights.completeness}%) - Did the student cover all important points from the answer key? If all major points match, give 100. Deduct only for missing substantive points.
-3. Clarity (${rubricWeights.clarity}%) - Is the writing clear and understandable? Give 100 if the explanation is clear. Deduct only if the writing is confusing or poorly organized.
-4. Objectivity (${rubricWeights.objectivity}%) - Did the student remain objective without personal bias? Give 100 if no bias detected. Deduct only for obvious subjective opinions.
+Grading criteria:
+1. Accuracy (${rubricWeights.accuracy}%) - Do the findings match the teacher's answer? For exact matches or matches with slight rewording, give 100. Deduct only for incorrect or contradictory information.
+2. Completeness (${rubricWeights.completeness}%) - Are all important points from the answer key covered? Give 100 if all major points match. Deduct only for missing important details.
+3. Clarity (${rubricWeights.clarity}%) - Is the writing clear and easy to understand? Give 100 if clear. Deduct only for confusing or poorly organized writing.
+4. Objectivity (${rubricWeights.objectivity}%) - Is the analysis objective without personal bias? Give 100 if objective. Deduct only for obvious personal opinions or biases.
 
-IMPORTANT - OUTPUT REQUIREMENTS:
-- Your feedback MUST use SIMPLE, CLEAR language suitable for criminology students. 
-- DO NOT mention or reference JSON, data structures, field names, technical terms, or programming concepts.
-- DO NOT use quoted identifiers like 'explanation', 'tableAnswers', 'field', 'section', 'format', 'structure', 'array', 'object'.
-- Write feedback as if speaking to a fellow student studying forensic analysis.
-- Focus ONLY on the forensic/criminology content, not on how the data is organized or formatted.
+CRITICAL - OUTPUT REQUIREMENTS:
+- Your feedback MUST use simple, clear language suitable for students learning forensic analysis.
+- Write as if explaining to a fellow student - NO technical jargon, NO programming terms.
+- NEVER mention or reference: JSON, tables, fields, arrays, objects, sections, formats, structures, identifiers, keys, values, properties, attributes, elements, pairs, code, or any programming/data terms.
+- Focus ONLY on the forensic content and analysis quality.
+- Keep feedback brief and constructive.
 
 Teacher findings:
 """
@@ -98,7 +93,7 @@ Return ONLY valid JSON with these exact fields:
   "clarity": (number 0-100),
   "objectivity": (number 0-100),
   "overall_score": (number 0-100),
-  "feedback": "Brief feedback in simple, clear language. Example: 'You correctly identified the handwriting slant and pressure. You also noted the baseline characteristics well. Your analysis was clear and objective. One minor point: you could have elaborated more on the loop formations.'"
+  "feedback": "Brief feedback in simple language for a forensic analysis student. Example: 'You correctly identified the handwriting slant and pressure. Your analysis was clear and objective. Well done.'"
 }`;
 
   try {
@@ -226,11 +221,25 @@ Return ONLY valid JSON with these exact fields:
 
     let feedback = String(parsed.feedback ?? (parsed.comments ?? 'No feedback'));
     
-    // Aggressively clean up feedback to remove any technical terms the AI might have included
-    // Step 1: Remove quoted identifiers like 'explanation', "tableAnswers", etc.
+    // AGGRESSIVE cleanup to remove technical/programming terms that AI might include
+    // Step 1: Remove quoted identifiers and entire phrases containing programming terms
     feedback = feedback.replace(/['"][^'"]*['"][,\.\s]?/g, ' ');
     
-    // Step 2: Remove common technical/formatting words (case-insensitive)
+    // Step 2: Remove entire phrases/sentences containing technical terms
+    const bannedPhrases = [
+      /\b(minor|trivial|minor\s+)?deduction.{0,50}?structural elements/gi,
+      /\b(minor|trivial)?.*?tableAnswers/gi,
+      /\b(minor|trivial)?.*?conclusion field/gi,
+      /\b(minor|trivial)?.*?additional fields/gi,
+      /\b(minor|trivial)?.*?additional structure/gi,
+      /\baside from.{0,50}?includes/gi,
+    ];
+    
+    for (const phrase of bannedPhrases) {
+      feedback = feedback.replace(phrase, ' ');
+    }
+    
+    // Step 3: Remove common technical/formatting words (case-insensitive)
     const technicalTerms = [
       /\bjson\b/gi,
       /\btableAnswers\b/gi,
@@ -252,14 +261,20 @@ Return ONLY valid JSON with these exact fields:
       /\battribute\b/gi,
       /\belement\b/gi,
       /\bpair\b/gi,
+      /\bincluded\b/gi,
+      /\binclude\b/gi,
+      /\belements\b/gi,
+      /\bexplanation\b/gi,
+      /\bconclusion\b/gi,
     ];
     
     for (const term of technicalTerms) {
-      feedback = feedback.replace(term, '');
+      feedback = feedback.replace(term, ' ');
     }
     
-    // Step 3: Split into sentences and filter out ones containing banned patterns
+    // Step 4: Remove sentences containing these patterns
     const bannedPatterns = [
+      /minor.*deduction/i,
       /\bjson\b/i,
       /\bformat\b/i,
       /\bstructured\b/i,
@@ -275,7 +290,11 @@ Return ONLY valid JSON with these exact fields:
       /\bthe.*explanation\b/i,
       /\bthe.*table/i,
       /\bthe.*field/i,
+      /\bthe.*conclusion\b/i,
       /\bquoted/i,
+      /structural.*element/i,
+      /additional.*structural/i,
+      /tableAnswer/i,
     ];
     
     try {
@@ -339,10 +358,10 @@ Return ONLY valid JSON with these exact fields:
         if (tNorm === sNorm) {
           const fallbackAccuracy = 100;
           const fallbackCompleteness = 100;
-          const fallbackClarity = 95;
+          const fallbackClarity = 100;
           const fallbackObjectivity = 100;
-          const fallbackOverall = Math.round((fallbackAccuracy * (rubricWeights.accuracy || 0) + fallbackCompleteness * (rubricWeights.completeness || 0) + fallbackClarity * (rubricWeights.clarity || 0) + fallbackObjectivity * (rubricWeights.objectivity || 0)) / ((rubricWeights.accuracy || 0) + (rubricWeights.completeness || 0) + (rubricWeights.clarity || 0) + (rubricWeights.objectivity || 0)));
-          const fallbackFeedback = 'Student findings match the teacher\'s findings exactly. Full marks awarded.';
+          const fallbackOverall = 100;
+          const fallbackFeedback = 'Perfect! Your findings match the teacher\'s answer exactly. Excellent work.';
           try {
             await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${fallbackOverall}, ${fallbackAccuracy}, ${fallbackCompleteness}, ${fallbackClarity}, ${fallbackObjectivity}, ${fallbackFeedback}, ${String(err && err.message ? err.message : err)}, ${null})`;
           } catch (dbErr) {
