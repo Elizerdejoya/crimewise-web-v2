@@ -121,7 +121,7 @@ router.post(
       // Insert the new keyword pool
       const result = await db.sql`
         INSERT INTO keyword_pools (name, keywords, description, organization_id, created_by, created) 
-        VALUES (${name}, ${JSON.stringify(keywords)}, ${description || null}, ${organization_id}, ${created_by}, datetime('now'))
+        VALUES (${name}, ${JSON.stringify(keywords)}, ${description || null}, ${organization_id}, ${created_by}, CURRENT_TIMESTAMP)
         RETURNING id
       `;
 

@@ -185,7 +185,7 @@ router.get(
         LEFT JOIN results r ON e.id = r.exam_id
         LEFT JOIN questions q ON e.question_id = q.id
         WHERE u.organization_id = ${orgFilter.organizationId}
-          AND e.start <= datetime('now')
+          AND e.start <= CURRENT_TIMESTAMP
         GROUP BY e.id, q.id
         ORDER BY e.start DESC
         LIMIT ${parseInt(limit)}
@@ -210,7 +210,7 @@ router.get(
         JOIN users u ON e.instructor_id = u.id
         LEFT JOIN results r ON e.id = r.exam_id
         LEFT JOIN questions q ON e.question_id = q.id
-        WHERE e.start <= datetime('now')
+        WHERE e.start <= CURRENT_TIMESTAMP
         GROUP BY e.id, q.id
         ORDER BY e.start DESC
         LIMIT ${parseInt(limit)}

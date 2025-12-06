@@ -257,7 +257,7 @@ router.post(
       // Insert the new question
       const result = await db.sql`
       INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, keyword_pool_id, selected_keywords, created_by, organization_id, created) 
-      VALUES (${title}, ${text}, ${course_id}, ${difficulty}, ${type}, ${validatedAnswer}, ${image}, ${totalPoints}, ${keyword_pool_id || null}, ${selected_keywords ? JSON.stringify(selected_keywords) : null}, ${created_by}, ${organization_id}, datetime('now'))
+      VALUES (${title}, ${text}, ${course_id}, ${difficulty}, ${type}, ${validatedAnswer}, ${image}, ${totalPoints}, ${keyword_pool_id || null}, ${selected_keywords ? JSON.stringify(selected_keywords) : null}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
       RETURNING id
     `;
 
@@ -634,7 +634,7 @@ router.post(
         INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, created_by, organization_id, created) 
         VALUES (${
           "Copy of " + title
-        }, ${text}, ${course_id}, ${difficulty}, ${type}, ${answer}, ${image}, ${points}, ${created_by}, ${organization_id}, datetime('now'))
+        }, ${text}, ${course_id}, ${difficulty}, ${type}, ${answer}, ${image}, ${points}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
         RETURNING id
       `;
 
