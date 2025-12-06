@@ -842,6 +842,11 @@ const Results = () => {
     }
 
     const getCourseName = (r: any) => {
+      // First check if course name came directly from backend (course_name field)
+      if (r.course_name) return r.course_name;
+      if (r.course_code) return r.course_code;
+      
+      // Otherwise look it up from courses array
       const cid = r.course || r.course_id;
       if (!cid) return cid || '';
       const found = courses.find((c) => String(c.id) === String(cid) || String(c.course_id) === String(cid) || String(c.name) === String(cid));
@@ -855,7 +860,7 @@ const Results = () => {
       totalPoints,
       earnedPoints,
       score,
-      examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
+      examName: result.examName || result.exam_name || result.name || result.title || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
   }).sort((a, b) => {

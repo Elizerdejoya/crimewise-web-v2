@@ -605,75 +605,30 @@ router.get(
           .json({ error: "Cannot view other student's results" });
       }
 
+      // Query results with exam names by joining exams table
+      // Get exam names - select all exam columns so frontend can pick the right one
       let query;
-      try {
-        if (orgFilter.hasFilter) {
-          // For non-super_admin users, ensure student belongs to same organization
-          query = await db.sql`
-          SELECT r.*, e.name as examName, e.course_id as course, e.start as examStart, e.end as examEnd,
-                  q.type as question_type, q.answer as answer_key, q.points,
-                  q.keyword_pool_id, q.selected_keywords,
-                  CASE WHEN kp.name IS NULL THEN NULL ELSE kp.name END as keyword_pool_name,
-                  CASE WHEN kp.description IS NULL THEN NULL ELSE kp.description END as keyword_pool_description,
-                  CASE WHEN kp.keywords IS NULL THEN NULL ELSE kp.keywords END as keyword_pool_keywords
-          FROM results r
-          JOIN exams e ON r.exam_id = e.id
-          JOIN questions q ON e.question_id = q.id
-          LEFT JOIN keyword_pools kp ON q.keyword_pool_id = kp.id
-          JOIN users u ON r.student_id = u.id
-          WHERE r.student_id = ${studentId} AND u.organization_id = ${orgFilter.organizationId}
-          ORDER BY r.date DESC
-        `;
-        } else {
-          // Super admin can see all
-          query = await db.sql`
-          SELECT r.*, e.name as examName, e.course_id as course, e.start as examStart, e.end as examEnd,
-                  q.type as question_type, q.answer as answer_key, q.points,
-                  q.keyword_pool_id, q.selected_keywords,
-                  CASE WHEN kp.name IS NULL THEN NULL ELSE kp.name END as keyword_pool_name,
-                  CASE WHEN kp.description IS NULL THEN NULL ELSE kp.description END as keyword_pool_description,
-                  CASE WHEN kp.keywords IS NULL THEN NULL ELSE kp.keywords END as keyword_pool_keywords
-          FROM results r
-          JOIN exams e ON r.exam_id = e.id
-          JOIN questions q ON e.question_id = q.id
-          LEFT JOIN keyword_pools kp ON q.keyword_pool_id = kp.id
-          WHERE r.student_id = ${studentId}
-          ORDER BY r.date DESC
-        `;
-        }
-      } catch (schemaErr) {
-        // If the old schema fails, try the new PostgreSQL schema
-        console.log("Old schema query failed, trying new PostgreSQL schema:", schemaErr.message);
-        if (orgFilter.hasFilter) {
-          query = await db.sql`
-          SELECT r.*, e.title as examName, e.course_id as course, e.created_at as examStart, e.updated_at as examEnd,
-                  q.question_type as question_type, q.question_text as answer_key, q.points,
-                  NULL as keyword_pool_id, NULL as selected_keywords,
-                  NULL as keyword_pool_name,
-                  NULL as keyword_pool_description,
-                  NULL as keyword_pool_keywords
-          FROM results r
-          JOIN exams e ON r.exam_id = e.id
-          JOIN questions q ON r.question_id = q.id
-          JOIN users u ON r.student_id = u.id
-          WHERE r.student_id = ${studentId} AND u.organization_id = ${orgFilter.organizationId}
-          ORDER BY r.created_at DESC
-        `;
-        } else {
-          query = await db.sql`
-          SELECT r.*, e.title as examName, e.course_id as course, e.created_at as examStart, e.updated_at as examEnd,
-                  q.question_type as question_type, q.question_text as answer_key, q.points,
-                  NULL as keyword_pool_id, NULL as selected_keywords,
-                  NULL as keyword_pool_name,
-                  NULL as keyword_pool_description,
-                  NULL as keyword_pool_keywords
-          FROM results r
-          JOIN exams e ON r.exam_id = e.id
-          JOIN questions q ON r.question_id = q.id
-          WHERE r.student_id = ${studentId}
-          ORDER BY r.created_at DESC
-        `;
-        }
+      if (orgFilter.hasFilter) {
+        // For non-super_admin users, ensure student belongs to same organization
+        query = await db.sql`
+        SELECT r.*, e.*, c.name as course_name, c.code as course_code
+        FROM results r
+        INNER JOIN exams e ON r.exam_id = e.id
+        LEFT JOIN courses c ON e.course_id = c.id
+        INNER JOIN users u ON r.student_id = u.id
+        WHERE r.student_id = ${studentId} AND u.organization_id = ${orgFilter.organizationId}
+        ORDER BY r.submitted_at DESC NULLS LAST
+      `;
+      } else {
+        // Super admin can see all
+        query = await db.sql`
+        SELECT r.*, e.*, c.name as course_name, c.code as course_code
+        FROM results r
+        INNER JOIN exams e ON r.exam_id = e.id
+        LEFT JOIN courses c ON e.course_id = c.id
+        WHERE r.student_id = ${studentId}
+        ORDER BY r.submitted_at DESC NULLS LAST
+      `;
       }
 
       res.json(query);
