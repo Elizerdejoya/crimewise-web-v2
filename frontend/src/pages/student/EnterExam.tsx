@@ -67,8 +67,10 @@ const EnterExam = () => {
       }
       const exam = await res.json();
       const now = new Date();
+      // Parse times as-is (they're in server timezone which matches your local timezone now)
       const start = new Date(exam.start);
       const end = new Date(exam.end);
+      
       if (now < start) {
         setError("This exam has not started yet.");
         toast({
