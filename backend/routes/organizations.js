@@ -19,7 +19,7 @@ router.get(
       FROM organizations o
       LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
       LEFT JOIN users u ON o.id = u.organization_id
-      GROUP BY o.id
+      GROUP BY o.id, s.id, s.plan_name, s.status, s.end_date
       ORDER BY o.created_at DESC
     `;
       res.json(organizations);
