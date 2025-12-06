@@ -748,88 +748,35 @@ const Results = () => {
 
   // Process results for display with sorting
   const processedResults = [...filteredResults].map(result => {
-    // Compute raw_score, raw_total, and points-based scoring for forensic if not present
+    // Parse scoring details from the details JSON field
     let raw_score = result.raw_score;
     let raw_total = result.raw_total;
     let totalPoints = 0;
     let earnedPoints = 0;
 
-    if (result.question_type === "forensic" && result.answer && result.answer_key) {
-      let parsedAnswer = [];
-      let parsedKey = [];
-      let columns = [];
-
+    // Try to extract score data from details field
+    if (result.details) {
       try {
-        console.log("Raw answer:", result.answer);
-        console.log("Raw answer key:", result.answer_key);
-
-        // Parse answer - handle the nested structure
-        if (result.answer) {
-          const rawAnswer = JSON.parse(result.answer);
-          // Check if answer has tableAnswers property (from TakeExam.tsx)
-          parsedAnswer = rawAnswer.tableAnswers || rawAnswer;
-          console.log("Parsed answer:", parsedAnswer);
+        const detailsObj = typeof result.details === 'string' 
+          ? JSON.parse(result.details) 
+          : result.details;
+        
+        // Extract scoring information from details
+        if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+          raw_score = detailsObj.totalScore;
+          raw_total = detailsObj.totalPossiblePoints;
         }
-
-        // Parse answer key - normalize the structure
-        if (result.answer_key) {
-          const rawKey = JSON.parse(result.answer_key);
-          // Check if answer_key has specimens property (new format)
-          if (rawKey.specimens && Array.isArray(rawKey.specimens)) {
-            parsedKey = rawKey.specimens;
-          } else if (Array.isArray(rawKey)) {
-            parsedKey = rawKey;
-          } else {
-            parsedKey = [];
-          }
-          console.log("Parsed key:", parsedKey);
+        
+        // Extract explanation/findings score if available
+        if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
+          // These are additional points for explanation/conclusion
+          const explanationScore = detailsObj.explanationScore;
+          const explanationPoints = detailsObj.explanationPoints;
+          totalPoints = (raw_total || 0) + explanationPoints;
+          earnedPoints = (raw_score || 0) + explanationScore;
         }
-
-        // Ensure parsedKey is an array
-        if (!Array.isArray(parsedKey)) {
-          parsedKey = [];
-          console.error("parsedKey is not an array after parsing");
-        }
-
-        // Get columns but exclude any metadata fields
-        columns = parsedKey.length > 0
-          ? Object.keys(parsedKey[0]).filter(k => !['points', 'id', 'rowId'].includes(k))
-          : [];
-        console.log("Columns:", columns);
       } catch (e) {
-        console.error("Error parsing results:", e);
-        parsedAnswer = [];
-        parsedKey = [];
-        columns = [];
-      }
-
-      raw_total = parsedKey.length * columns.length;
-      raw_score = 0;
-
-      // Calculate scores using same logic as instructor views
-      if (Array.isArray(parsedKey)) {
-        parsedKey.forEach((row: any, rowIdx: number) => {
-          // Get row points if available
-          const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-          totalPoints += rowPoints;
-
-          // Check each column for correctness
-          let allCorrectForRow = true;
-          columns.forEach((col: string) => {
-            const studentAns = safeString(parsedAnswer[rowIdx]?.[col]);
-            const correctAns = safeString(row[col]);
-            if (studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase()) {
-              raw_score++;
-            } else {
-              allCorrectForRow = false;
-            }
-          });
-
-          // Award points if all answers in the row are correct
-          if (allCorrectForRow) {
-            earnedPoints += rowPoints;
-          }
-        });
+        console.error("Error parsing details:", e);
       }
     }
 
@@ -1019,7 +966,7 @@ const Results = () => {
                               </TableCell>
                         <TableCell className="text-center">
                           <div className="flex gap-2 justify-end">
-                            {result.answer && result.answer_key && (
+                            {result.answer && result.details && (
                               <Dialog>
                                   <DialogTrigger asChild>
                                   <Button
