@@ -658,7 +658,7 @@ const TakeExam = () => {
                 studentText: explanation.trim(),
                 maxPoints: explanationPoints,
                 earnedPoints: explanationScore,
-                scoringNote: "Points awarded based on fake/real specimen conclusion"
+                scoringNote: "Points awarded based on whether specimen is written by the same person"
               };
             } else if (studentConclusion) {
               // If no expected conclusion specified, award full points for any selection
@@ -707,7 +707,7 @@ const TakeExam = () => {
           explanationScore,
           explanationPoints,
           explanationDetails,
-          assessmentMethod: "Exact matching with fake/real specimen conclusion",
+          assessmentMethod: "Exact matching with same person determination",
         };
 
         // Save both the table answers and the explanation

@@ -324,8 +324,8 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                           }`}
                         >
                           {forensicData.explanation.conclusion === "fake"
-                            ? "Fake Specimen"
-                            : "Real Specimen"}
+                            ? "Not Written by Same Person"
+                            : "Written by Same Person"}
                         </span>
                       </div>
                     )}

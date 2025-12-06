@@ -244,7 +244,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       toast({
         title: "Validation Error",
         description:
-          "Please select a forensic conclusion (Fake or Real Specimen) when providing an explanation.",
+          "Please select whether the specimen is written by the same person when providing an explanation.",
         variant: "destructive",
       });
       return;
@@ -796,7 +796,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                   onClick={() => setForensicConclusion("fake")}
                   className="flex-1"
                 >
-                  Fake Specimen
+                  Not Written by Same Person
                 </Button>
                 <Button
                   type="button"
@@ -806,7 +806,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                   onClick={() => setForensicConclusion("real")}
                   className="flex-1"
                 >
-                  Real Specimen
+                  Written by Same Person
                 </Button>
               </div>
             </div>

@@ -294,11 +294,11 @@ Return ONLY valid JSON with these exact fields:
       feedback = 'Good job — your analysis demonstrates understanding of the forensic principles involved.';
     }
 
-    // Replace specimen wording per instructor preference: do not use 'fake specimen'/'real specimen'
+    // Replace specimen wording: fake specimen → not written by same person, real specimen → written by same person
     try {
       feedback = feedback
-        .replace(/\bfake specimen\b/gi, 'it is not written by the same person')
-        .replace(/\breal specimen\b/gi, 'it is written by the same person')
+        .replace(/\bfake specimen\b/gi, 'not written by the same person')
+        .replace(/\breal specimen\b/gi, 'written by the same person')
         .replace(/\bnot a match\b/gi, 'it is not written by the same person')
         .replace(/\bnon[- ]?matching\b/gi, 'it is not written by the same person')
         .replace(/\bforgery\b/gi, 'it is not written by the same person')

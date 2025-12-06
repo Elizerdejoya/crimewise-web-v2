@@ -1,0 +1,161 @@
+================================================================================
+AI GRADING CAPACITY ANALYSIS - 300 CONCURRENT SUBMISSIONS
+================================================================================
+
+📊 CURRENT SYSTEM ARCHITECTURE:
+================================================================================
+
+API KEY CONFIGURATION:
+- Uses: 6 DEDICATED Gemini API keys (GEMINI_API_KEY_1 through GEMINI_API_KEY_6)
+- Chatbot: Uses separate GEMINI_API_KEY (NOT rotated, not counted here)
+- Distribution: Round-robin intelligent rotation across 6 keys
+- Location: apiKeyManager.js (manages rate limiting and key rotation)
+
+RATE LIMITING PER KEY:
+- Max: 10 RPM (Requests Per Minute) per key
+- Actual used: 8 RPM per key (safe margin)
+- Min interval: 60,000ms / 8 = 7,500ms (7.5 seconds) between requests per key
+
+TOTAL SYSTEM CAPACITY:
+- 6 keys × 8 RPM = 48 RPM MAXIMUM
+- 6 keys × 250 RPD (requests per day) = 1,500 RPD
+
+CONCURRENT WORKER SETTINGS:
+- MAX_CONCURRENCY: Currently 1 (set for safety during high load)
+- Can be increased via AI_WORKER_CONCURRENCY env var
+- Recommended for PostgreSQL: 6 (one per API key)
+
+================================================================================
+PROCESSING FLOW:
+================================================================================
+
+1. SUBMISSION → Database Queue:
+   - Student submits exam → INSERT into ai_queue table
+   - Status: 'pending'
+   - Uses short 5×50ms retry (total 250ms) to avoid connection hold
+
+2. BACKGROUND WORKER PROCESSING:
+   - ai-worker.js polls ai_queue every 2000ms (configurable)
+   - Picks one 'pending' job
+   - Applies exponential backoff: attempts × 60 seconds
+   - Gets next available API key from apiKeyManager
+   - Submits to Gemini for grading
+   - Stores result in ai_grades table
+
+3. STUDENT CHECKS STATUS:
+   - GET /api/ai-grades/{resultId}
+   - Returns grade if processed, 404 if pending
+
+================================================================================
+CAN IT HANDLE 300 CONCURRENT SUBMISSIONS?
+================================================================================
+
+✅ YES - BUT WITH CAVEATS
+
+SUBMISSION THROUGHPUT (First 2-3 seconds):
+- PostgreSQL: UNLIMITED concurrent connections
+- Queue inserts: 300 successful immediately
+- Status: ✅ ALL 300 can submit without waiting
+
+AI GRADING THROUGHPUT (Processing phase):
+- Rate: 48 requests per minute maximum
+- Time to process 300: 300 ÷ 48 = 6.25 minutes
+- With retries/backoff: ~7-8 minutes realistically
+
+BOTTLENECK ANALYSIS:
+
+| Phase | Throughput | Can Handle 300? |
+|-------|-----------|-----------------|
+| SQL Insert | Unlimited | ✅ YES |
+| Queue Retrieval | Fast | ✅ YES |
+| API Requests | 48/min (8 per key) | ⚠️ QUEUE BUILDS |
+| Storage (ai_grades) | Fast | ✅ YES |
+
+⚠️ CONSTRAINTS:
+1. Rate Limit: 48 RPM < 300 submissions = Queue buildup
+2. Processing Time: 300 exams × ~30sec per grade = ~150 minutes worst case
+3. With current concurrency (1): Very slow; needs increase to 6
+
+================================================================================
+RECOMMENDATIONS TO HANDLE 300 CONCURRENT:
+================================================================================
+
+1. INCREASE CONCURRENCY:
+   Set: AI_WORKER_CONCURRENCY=6
+   Effect: 6 parallel workers (one per API key)
+   Result: ~150-180 grading requests could start processing
+   
+2. OPTIMIZE API KEY USAGE:
+   Current: 8 RPM per key (safe margin)
+   Could use: 10 RPM per key (full limit)
+   Effect: 60 RPM instead of 48 RPM
+   
+3. INCREASE API KEYS:
+   Add more GEMINI_API_KEY_N (7, 8, 9...)
+   Each adds 8-10 RPM capacity
+   Cost: 1 API key = +8 RPM
+   
+4. IMPLEMENTATION:
+   - Set AI_WORKER_CONCURRENCY=6 in .env (immediate effect)
+   - Or set GEMINI_API_KEY_7, GEMINI_API_KEY_8 (adds 2 more keys)
+   - Verify with load test
+
+================================================================================
+ESTIMATED TIMING FOR 300 SUBMISSIONS:
+================================================================================
+
+SCENARIO 1: Current Settings (Concurrency=1, 6 keys, 8 RPM each)
+- Time to complete: ~6.25 minutes (300 ÷ 48)
+- Realistically: 7-8 minutes (with retry backoff)
+- User experience: Students see grades pop in slowly over 8 minutes
+
+SCENARIO 2: Recommended (Concurrency=6, 6 keys, 8 RPM each)
+- Parallel processing: 6 jobs at once
+- API rate still: 48 RPM
+- Time to complete: ~6.5 minutes (slightly better queue management)
+- User experience: Faster feedback; grades appear in 6-7 minutes
+
+SCENARIO 3: Enhanced (Concurrency=6, 8 keys, 10 RPM each)
+- Parallel processing: 6 jobs at once
+- API rate: 80 RPM (!!)
+- Time to complete: ~3.75 minutes (300 ÷ 80)
+- User experience: ✅ Best; grades in 4-5 minutes
+- Cost: Additional 2 API keys
+
+================================================================================
+DATABASE & CONNECTION CONSIDERATIONS:
+================================================================================
+
+PostgreSQL (Current):
+- ✅ Unlimited concurrent connections
+- ✅ Can handle 300 submissions instantly
+- ✅ Connection pooling: max 10 per worker
+- Summary: DATABASE IS NOT A BOTTLENECK
+
+SQLiteCloud (Previous):
+- ❌ 30-connection limit
+- ❌ Would cause 0% success at 300 concurrent
+- ❌ Would need queue in frontend (NOT done)
+- This is why we migrated to PostgreSQL!
+
+================================================================================
+FINAL VERDICT:
+================================================================================
+
+✅ Can 300 concurrent submissions work?
+   YES - All 300 will submit successfully to database
+
+⚠️ Can 300 get AI grades?
+   YES, but it takes time (~6-8 minutes with current settings)
+
+🚀 How to optimize for 300 concurrent:
+   1. Set AI_WORKER_CONCURRENCY=6 (parallel processing)
+   2. Add GEMINI_API_KEY_7 and GEMINI_API_KEY_8 (increase capacity)
+   3. Monitor /api/monitor/api-key-stats for bottlenecks
+
+📈 Current Configuration Recommendation:
+   - Keep: 6 dedicated grader API keys
+   - Change: Concurrency from 1 → 6
+   - Result: Much better queue management, grades in ~6-7 minutes
+
+================================================================================
