@@ -471,23 +471,33 @@ const Results = () => {
           expectedConclusion = rawKey.explanation.conclusion;
         }
 
+        // Helper function to convert conclusion to readable text
+        const formatConclusion = (conclusion: string) => {
+          if (conclusion === "fake") return "Not Written by Same Person";
+          if (conclusion === "real") return "Written by Same Person";
+          return conclusion.charAt(0).toUpperCase() + conclusion.slice(1);
+        };
+
         if (studentConclusion || expectedConclusion) {
           const conclusionMatch = studentConclusion && expectedConclusion && studentConclusion === expectedConclusion;
           examContent += `
-            <div class="conclusion-section">
-              <h3>Forensic Conclusion</h3>
-              ${studentConclusion ? `
-                <div class="conclusion-item">
-                  <strong>Your Conclusion:</strong> 
-                  <span class="${conclusionMatch ? 'correct' : (expectedConclusion ? 'incorrect' : '')}">${studentConclusion.charAt(0).toUpperCase() + studentConclusion.slice(1)} Specimen ${conclusionMatch ? '✓' : (expectedConclusion ? '✗' : '')}</span>
-                </div>
-              ` : ''}
-              ${expectedConclusion ? `
-                <div class="conclusion-item">
-                  <strong>Expected Conclusion:</strong> 
-                  <span>${expectedConclusion.charAt(0).toUpperCase() + expectedConclusion.slice(1)} Specimen</span>
-                </div>
-              ` : ''}
+            <div class="conclusion-section" style="margin: 20px 0; padding: 16px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #007bff;">
+              <h3 style="margin-top: 0; margin-bottom: 16px; color: #333;">Forensic Conclusion</h3>
+              <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                ${studentConclusion ? `
+                  <div style="flex: 1; min-width: 250px; padding: 12px; background: white; border-radius: 6px; border: 2px solid ${conclusionMatch ? '#28a745' : '#ffc107'};">
+                    <strong style="display: block; margin-bottom: 8px; color: #666;">Your Conclusion:</strong>
+                    <span style="font-size: 18px; font-weight: bold; color: ${conclusionMatch ? '#28a745' : '#ffc107'};">${formatConclusion(studentConclusion)}</span>
+                    ${conclusionMatch ? '<span style="margin-left: 8px; color: #28a745;">✓ Correct</span>' : (expectedConclusion ? '<span style="margin-left: 8px; color: #dc3545;">✗ Incorrect</span>' : '')}
+                  </div>
+                ` : ''}
+                ${expectedConclusion ? `
+                  <div style="flex: 1; min-width: 250px; padding: 12px; background: white; border-radius: 6px; border: 2px solid #007bff;">
+                    <strong style="display: block; margin-bottom: 8px; color: #666;">Correct Answer:</strong>
+                    <span style="font-size: 18px; font-weight: bold; color: #007bff;">${formatConclusion(expectedConclusion)}</span>
+                  </div>
+                ` : ''}
+              </div>
             </div>
           `;
         }
