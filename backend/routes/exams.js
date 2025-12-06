@@ -17,6 +17,7 @@ function generateToken(length = 8) {
   return token;
 }
 
+
 // GET all exams, filter by instructorId if provided
 router.get(
   "/",
@@ -229,9 +230,21 @@ router.post(
 
       const token = generateToken();
 
+      // Store times: treat incoming time as Asia/Manila, convert to UTC for storage
+      // This way: 11:54 Manila (input) → stored as 03:54 UTC internally → displayed as 11:54 in Manila timezone
       const result = await db.sql`
       INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
-      VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
+      VALUES (
+        ${name}, 
+        ${course_id}, 
+        ${class_id}, 
+        ${instructor_id}, 
+        ${question_id}, 
+        ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+        ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+        ${duration}, 
+        ${token}
+      )
       RETURNING id
     `;
 
@@ -253,8 +266,15 @@ router.get(
       const userId = req.user.id;
       const userOrgId = req.user.organization_id;
 
-      // Get exam details
-      const rows = await db.sql`SELECT * FROM exams WHERE token = ${token}`;
+      // Get exam details - convert from UTC back to Manila time for display
+      const rows = await db.sql`
+      SELECT 
+        id, name, course_id, class_id, instructor_id, question_id, 
+        (start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+        ("end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
+        duration, token, organization_id, created
+      FROM exams WHERE token = ${token}
+      `;
 
       if (!rows || rows.length === 0) {
         return res.status(404).json({ error: "Exam not found" });
@@ -327,7 +347,14 @@ router.get(
 router.get("/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const rows = await db.sql`SELECT * FROM exams WHERE id = ${id}`;
+    const rows = await db.sql`
+    SELECT 
+      id, name, course_id, class_id, instructor_id, question_id, 
+      (start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+      ("end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
+      duration, token, organization_id, created
+    FROM exams WHERE id = ${id}
+    `;
 
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: "Exam not found" });
@@ -721,8 +748,8 @@ router.put(
           class_id = ${classId}, 
           instructor_id = ${instructorId}, 
           question_id = ${questionId}, 
-          start = ${start}, 
-          "end" = ${end}, 
+          start = ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
+          "end" = ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
           duration = ${duration}
       WHERE id = ${examId}
     `;
@@ -878,7 +905,17 @@ router.post(
 
           const result = await db.sql`
           INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
-          VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
+          VALUES (
+            ${name}, 
+            ${course_id}, 
+            ${class_id}, 
+            ${instructor_id}, 
+            ${question_id}, 
+            ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+            ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+            ${duration}, 
+            ${token}
+          )
           RETURNING id
         `;
 
@@ -956,8 +993,8 @@ router.patch("/bulk", async (req, res) => {
               class_id = ${classId}, 
               instructor_id = ${InstructorId}, 
               question_id = ${questionId}, 
-              start = ${start}, 
-              "end" = ${end}, 
+              start = ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
+              "end" = ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
               duration = ${duration}
           WHERE id = ${examId}
         `;
