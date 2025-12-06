@@ -34,6 +34,25 @@ router.get("/", authenticateToken, async (req, res) => {
   }
 });
 
+// GET current user profile (authenticated user)
+router.get("/me", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await db.sql`SELECT * FROM users WHERE id = ${userId}`;
+
+    if (!user || user.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Don't return password in response
+    const { password, ...userWithoutPassword } = user[0];
+    res.json(userWithoutPassword);
+  } catch (err) {
+    console.log("[USERS][GET /me] Error:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET single user by ID
 router.get("/:id", async (req, res) => {
   try {
