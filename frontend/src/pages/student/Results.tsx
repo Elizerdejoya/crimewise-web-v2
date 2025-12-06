@@ -60,11 +60,11 @@ const Results = () => {
   // Fetch results from API
   const fetchStudentResults = () => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) return Promise.reject("No token");
     const decoded: JwtTokenPayload = jwtDecode(token);
     const studentId = decoded.id;
 
-    fetch(`${API_BASE_URL}/api/exams/student/${studentId}/results`, {
+    return fetch(`${API_BASE_URL}/api/exams/student/${studentId}/results`, {
       headers: getAuthHeaders(),
     })
       .then(res => {
@@ -82,6 +82,17 @@ const Results = () => {
         const resultsData = Array.isArray(data) ? data : [];
         setResults(resultsData);
         setFilteredResults(resultsData);
+        // Extract unique exam data from results (exams already included in results)
+        const examMap: Record<string, any> = {};
+        resultsData.forEach((result: any) => {
+          if (result.exam_id && !examMap[result.exam_id]) {
+            examMap[result.exam_id] = {
+              id: result.exam_id,
+              name: result.exam_name || result.examName || `Exam ${result.exam_id}`,
+            };
+          }
+        });
+        setExams(Object.values(examMap));
         // kick off background fetch of AI grades (non-blocking)
         fetchAiGradesForResults(resultsData);
         // fetch ai_queue status for these results so we can show requeue button when eligible
@@ -91,13 +102,6 @@ const Results = () => {
           .then((r) => r.ok ? r.json() : [])
           .then((courseList) => {
             if (Array.isArray(courseList)) setCourses(courseList);
-          })
-          .catch(() => {});
-        // fetch exams for name mapping
-        fetch(`${API_BASE_URL}/api/exams`, { headers: getAuthHeaders() })
-          .then((r) => r.ok ? r.json() : [])
-          .then((examList) => {
-            if (Array.isArray(examList)) setExams(examList);
           })
           .catch(() => {});
       })
@@ -676,7 +680,9 @@ const Results = () => {
   const handleReload = async () => {
     setIsReloading(true);
     try {
-      fetchStudentResults();
+      await fetchStudentResults();
+    } catch (e) {
+      console.error('Reload error:', e);
     } finally {
       setIsReloading(false);
     }
@@ -937,7 +943,8 @@ const Results = () => {
             />
           </div>
           <Button size="sm" variant="outline" onClick={handleReload} disabled={isReloading}>
-            <RefreshCw className={`h-4 w-4 ${isReloading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 mr-1 ${isReloading ? 'animate-spin' : ''}`} />
+            Reload
           </Button>
         </div>
 
