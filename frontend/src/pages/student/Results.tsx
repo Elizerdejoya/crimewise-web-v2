@@ -1238,50 +1238,40 @@ const Results = () => {
 
                                     {(() => {
                                       let parsedAnswer = [];
-                                      let parsedKey = [];
+                                      let rowDetails = [];
                                       let columns = [];
 
                                       try {
-                                        console.log("Raw answer:", result.answer);
-                                        console.log("Raw answer key:", result.answer_key);
-
-                                        // Parse answer - handle the nested structure
+                                        // Parse answer
                                         if (result.answer) {
-                                          const rawAnswer = JSON.parse(result.answer);
-                                          // Check if answer has tableAnswers property (from TakeExam.tsx)
-                                          parsedAnswer = rawAnswer.tableAnswers || rawAnswer;
-                                          console.log("Parsed answer:", parsedAnswer);
+                                          const rawAnswer = typeof result.answer === 'string' 
+                                            ? JSON.parse(result.answer)
+                                            : result.answer;
+                                          parsedAnswer = rawAnswer.tableAnswers || [];
+                                          console.log("Parsed answer from details:", parsedAnswer);
                                         }
 
-                                        // Parse answer key - normalize the structure
-                                        if (result.answer_key) {
-                                          const rawKey = JSON.parse(result.answer_key);
-                                          // Check if answer_key has specimens property (new format)
-                                          if (rawKey.specimens && Array.isArray(rawKey.specimens)) {
-                                            parsedKey = rawKey.specimens;
-                                          } else if (Array.isArray(rawKey)) {
-                                            parsedKey = rawKey;
-                                          } else {
-                                            parsedKey = [];
+                                        // Extract row details and column information from the details field
+                                        if (result.details) {
+                                          const detailsObj = typeof result.details === 'string'
+                                            ? JSON.parse(result.details)
+                                            : result.details;
+                                          
+                                          if (detailsObj.rowDetails && Array.isArray(detailsObj.rowDetails)) {
+                                            rowDetails = detailsObj.rowDetails;
+                                            console.log("Extracted rowDetails from details field:", rowDetails);
+                                            
+                                            // Get columns from the first row's columnScores
+                                            if (rowDetails.length > 0 && rowDetails[0].columnScores) {
+                                              columns = Object.keys(rowDetails[0].columnScores);
+                                              console.log("Extracted columns:", columns);
+                                            }
                                           }
-                                          console.log("Parsed key:", parsedKey);
                                         }
-
-                                        // Ensure parsedKey is an array
-                                        if (!Array.isArray(parsedKey)) {
-                                          parsedKey = [];
-                                          console.error("parsedKey is not an array after parsing");
-                                        }
-
-                                        // Get columns but exclude any metadata fields
-                                        columns = parsedKey.length > 0
-                                          ? Object.keys(parsedKey[0]).filter(k => !['points', 'id', 'rowId'].includes(k))
-                                          : [];
-                                        console.log("Columns:", columns);
                                       } catch (e) {
                                         console.error("Error parsing results:", e);
                                         parsedAnswer = [];
-                                        parsedKey = [];
+                                        rowDetails = [];
                                         columns = [];
                                       }
 
@@ -1300,39 +1290,28 @@ const Results = () => {
                                                 </TableRow>
                                               </TableHeader>
                                               <TableBody>
-                                                {parsedKey.map((row: any, rowIdx: number) => {
-                                                  // Count correct answers in this row
-                                                  let rowCorrectCount = 0;
-                                                  let rowTotalCount = columns.length;
-                                                  let allCorrectForRow = true;
-
-                                                  // Get row points
-                                                  const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-
-                                                  columns.forEach((col) => {
-                                                    const studentAns = safeString(parsedAnswer[rowIdx]?.[col]);
-                                                    const correctAns = safeString(row[col]);
-                                                    if (studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase()) {
-                                                      rowCorrectCount++;
-                                                    } else {
-                                                      allCorrectForRow = false;
-                                                    }
-                                                  });
+                                                {rowDetails.map((row: any, rowIdx: number) => {
+                                                  // Use data from rowDetails
+                                                  const rowCorrectCount = (row.columnScores && Object.values(row.columnScores as any).filter((col: any) => col.isExactMatch).length) || 0;
+                                                  const rowTotalCount = columns.length;
+                                                  const allCorrectForRow = row.correct || false;
+                                                  const rowPoints = row.possiblePoints || 1;
 
                                                   return (
                                                     <TableRow key={rowIdx}>
                                                       <TableCell className="sticky left-0 bg-background z-10 font-medium">{rowIdx + 1}</TableCell>
                                                       {columns.map((col, colIdx) => {
-                                                        const studentAns = safeString(parsedAnswer[rowIdx]?.[col]);
-                                                        const correctAns = safeString(row[col]);
-                                                        const isCorrect = studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase();
+                                                        const colScore = row.columnScores?.[col] || {};
+                                                        const isCorrect = colScore.isExactMatch || false;
+                                                        const studentValue = colScore.userValue || '-';
+                                                        const correctValue = colScore.correctValue || '-';
 
                                                         return (
                                                           <TableCell key={colIdx} className={`min-w-[120px] ${isCorrect ? "bg-green-50" : "bg-red-50"}`}>
                                                             <div className="flex flex-col space-y-1">
                                                               <div className="flex items-center flex-wrap">
                                                                 <span className={`text-sm font-medium break-words ${isCorrect ? "text-green-600" : "text-red-600"}`}>
-                                                                  {studentAns}
+                                                                  {studentValue}
                                                                 </span>
                                                                 <span className={`ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full flex-shrink-0 ${isCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
                                                                   {isCorrect ?
@@ -1348,7 +1327,7 @@ const Results = () => {
                                                               </div>
                                                               {!isCorrect && (
                                                                 <span className="text-xs text-muted-foreground break-words">
-                                                                  Correct: {correctAns}
+                                                                  Correct: {correctValue}
                                                                 </span>
                                                               )}
                                                             </div>
@@ -1405,10 +1384,15 @@ const Results = () => {
                                                 studentConclusion = parsed.conclusion;
                                               }
 
-                                              // Get expected conclusion from answer key
-                                              const parsedKey = JSON.parse(result.answer_key || "{}");
-                                              if (parsedKey.explanation && parsedKey.explanation.conclusion) {
-                                                expectedConclusion = parsedKey.explanation.conclusion;
+                                              // Get expected conclusion from details
+                                              if (result.details) {
+                                                const detailsObj = typeof result.details === 'string'
+                                                  ? JSON.parse(result.details)
+                                                  : result.details;
+                                                
+                                                if (detailsObj.explanationDetails && detailsObj.explanationDetails.expectedConclusion) {
+                                                  expectedConclusion = detailsObj.explanationDetails.expectedConclusion;
+                                                }
                                               }
                                             } catch (e) {
                                               console.error("Error parsing conclusion data:", e);
@@ -1465,6 +1449,7 @@ const Results = () => {
                                           {/* Explanation Section */}
                                           {(() => {
                                             let explanation = "";
+                                            let expectedExplanation = "";
                                             try {
                                               const parsed = JSON.parse(result.answer || "{}");
                                               console.log("Parsing explanation from:", parsed);
@@ -1475,13 +1460,20 @@ const Results = () => {
                                                 if (typeof parsed.explanation === 'string') {
                                                   explanation = parsed.explanation;
                                                 }
-                                                // Explanation in tableAnswers structure
-                                                else if (parsed.tableAnswers && typeof parsed.explanation === 'string') {
-                                                  explanation = parsed.explanation;
+                                              }
+
+                                              // Get expected explanation from details
+                                              if (result.details) {
+                                                const detailsObj = typeof result.details === 'string'
+                                                  ? JSON.parse(result.details)
+                                                  : result.details;
+                                                
+                                                if (detailsObj.explanationDetails && detailsObj.explanationDetails.studentText) {
+                                                  explanation = detailsObj.explanationDetails.studentText;
                                                 }
-                                                // Explanation stored directly in the result object
-                                                else if (result.explanation) {
-                                                  explanation = result.explanation;
+                                                // Expected explanation is sometimes stored as explanation property
+                                                if (detailsObj.explanation) {
+                                                  expectedExplanation = detailsObj.explanation;
                                                 }
                                               }
 
@@ -1499,25 +1491,14 @@ const Results = () => {
                                                   <p className="whitespace-pre-wrap break-words text-sm">{explanation}</p>
                                                 </div>
 
-                                                {/* Show expected explanation from answer key if available */}
-                                                {(() => {
-                                                  let expectedExplanation = "";
-                                                  try {
-                                                    const parsedKey = JSON.parse(result.answer_key || "{}");
-                                                    if (parsedKey.explanation && parsedKey.explanation.text) {
-                                                      expectedExplanation = parsedKey.explanation.text;
-                                                    }
-                                                  } catch (e) { /* ignore parsing errors */ }
-
-                                                  return expectedExplanation ? (
-                                                    <div className="mt-3">
-                                                      <h4 className="text-sm font-medium text-muted-foreground">Expected Findings</h4>
-                                                      <div className="bg-blue-50 p-3 rounded-md mt-1">
-                                                        <p className="whitespace-pre-wrap text-sm break-words">{expectedExplanation}</p>
-                                                      </div>
+                                                {expectedExplanation ? (
+                                                  <div className="mt-3">
+                                                    <h4 className="text-sm font-medium text-muted-foreground">Expected Findings</h4>
+                                                    <div className="bg-blue-50 p-3 rounded-md mt-1">
+                                                      <p className="whitespace-pre-wrap text-sm break-words">{expectedExplanation}</p>
                                                     </div>
-                                                  ) : null;
-                                                })()}
+                                                  </div>
+                                                ) : null}
                                               </div>
                                             ) : null;
                                           })()}
