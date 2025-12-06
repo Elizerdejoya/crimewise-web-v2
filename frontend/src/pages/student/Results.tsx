@@ -80,11 +80,6 @@ const Results = () => {
       })
       .then(data => {
         const resultsData = Array.isArray(data) ? data : [];
-        console.log("API Response - First result fields:", resultsData[0]);
-        console.log("API Response - examName field:", resultsData[0]?.examName);
-        console.log("API Response - exam_name field:", resultsData[0]?.exam_name);
-        console.log("API Response - name field:", resultsData[0]?.name);
-        console.log("API Response - exam_id field:", resultsData[0]?.exam_id);
         setResults(resultsData);
         setFilteredResults(resultsData);
         // kick off background fetch of AI grades (non-blocking)
@@ -863,16 +858,6 @@ const Results = () => {
       examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
-  })
-  .map((item) => {
-    if (!item.examName || item.examName.startsWith('Exam ')) {
-      console.log("Processed result examName issue:", {
-        original_examName: item.examName,
-        exam_id: item.exam_id,
-        source_result: filteredResults[0],
-      });
-    }
-    return item;
   }).sort((a, b) => {
     const { key = 'submitted_at', direction = 'desc' } = sortConfig || {};
     let aValue: any;
@@ -1001,7 +986,6 @@ const Results = () => {
                   {processedResults.length > 0 ? (
                     processedResults.map((result) => {
                       const findingsMaxPts = getFindingsMaxPoints(result);
-                      console.log("Rendering result with examName:", result.examName, "exam_id:", result.exam_id);
                       return (
                       <TableRow key={result.id}>
                         <TableCell className="font-medium text-center">{result.examName}</TableCell>

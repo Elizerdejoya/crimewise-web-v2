@@ -676,14 +676,6 @@ router.get(
         }
       }
 
-      console.log("Student results endpoint - Found query results:", query.length, "rows");
-      if (query.length > 0) {
-        console.log("First row keys:", Object.keys(query[0]));
-        console.log("First row examName:", query[0].examName);
-        console.log("First row name:", query[0].name);
-        console.log("First row title:", query[0].title);
-        console.log("First row exam_id:", query[0].exam_id);
-      }
       res.json(query);
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -1176,7 +1168,9 @@ router.get(
 
       // Get upcoming exams for the student's class
       const now = new Date().toISOString();
-      const rows = await db.sql`
+      let rows;
+      try {
+        rows = await db.sql`
         SELECT 
           e.id,
           e.name,
@@ -1195,6 +1189,28 @@ router.get(
           AND c.organization_id = ${student.organization_id}
         ORDER BY e.start ASC
       `;
+      } catch (schemaErr) {
+        // If the old schema fails, try the new PostgreSQL schema
+        console.log("Old schema query failed for upcoming exams, trying new PostgreSQL schema:", schemaErr.message);
+        rows = await db.sql`
+        SELECT 
+          e.id,
+          e.title as name,
+          e.created_at as start,
+          e.updated_at as end,
+          e.duration_minutes as duration,
+          NULL as token,
+          c.name as course_name,
+          c.code as course_code,
+          u.name as instructor_name
+        FROM exams e
+        JOIN courses c ON e.course_id = c.id
+        JOIN users u ON e.created_by = u.id
+        WHERE e.organization_id = ${student.organization_id}
+          AND e.created_at > ${now}
+        ORDER BY e.created_at ASC
+      `;
+      }
 
       res.json(rows);
     } catch (err) {
