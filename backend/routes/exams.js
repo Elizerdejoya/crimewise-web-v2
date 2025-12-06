@@ -1135,6 +1135,7 @@ router.get(
       }
 
       // Get upcoming exams for the student's class
+      // Show exams that haven't ended yet (end >= now) and are scheduled for today or later
       const now = new Date().toISOString();
       let rows;
       try {
@@ -1153,7 +1154,7 @@ router.get(
         JOIN courses c ON e.course_id = c.id
         JOIN users u ON e.instructor_id = u.id
         WHERE e.class_id = ${student.class_id} 
-          AND e.start > ${now}
+          AND e.end >= ${now}
           AND c.organization_id = ${student.organization_id}
         ORDER BY e.start ASC
       `;
@@ -1175,7 +1176,7 @@ router.get(
         JOIN courses c ON e.course_id = c.id
         JOIN users u ON e.created_by = u.id
         WHERE e.organization_id = ${student.organization_id}
-          AND e.created_at > ${now}
+          AND e.updated_at >= ${now}
         ORDER BY e.created_at ASC
       `;
       }
