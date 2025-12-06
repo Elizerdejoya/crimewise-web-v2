@@ -137,13 +137,23 @@ const CreateExam = () => {
     }
 
     const instructorId = currentUser.id;
+    
+    // Create Date objects in local timezone, then convert to UTC ISO string
+    // This way: Instructor sees local time → stored as UTC → student sees same local time
+    const startDateTime = new Date(`${startDate}T${startTime}`);
+    const endDateTime = new Date(`${endDate}T${endTime}`);
+    
+    // Get the timezone offset and adjust to UTC
+    const startUTC = new Date(startDateTime.getTime() - startDateTime.getTimezoneOffset() * 60000).toISOString();
+    const endUTC = new Date(endDateTime.getTime() - endDateTime.getTimezoneOffset() * 60000).toISOString();
+    
     const payload = {
       name: examName,
       course_id: course,
       class_id: selectedClass,
       instructor_id: instructorId,
-      start: `${startDate}T${startTime}`,
-      end: `${endDate}T${endTime}`,
+      start: startUTC,
+      end: endUTC,
       duration,
       question_id: selectedQuestion,
     };

@@ -73,7 +73,7 @@ const EnterExam = () => {
         setError("This exam has not started yet.");
         toast({
           title: "Exam Not Started",
-          description: `The exam will be available at ${start.toLocaleTimeString()}`,
+          description: `The exam will be available at ${start.toLocaleString()}`,
           variant: "destructive",
         });
       } else if (now > end) {
