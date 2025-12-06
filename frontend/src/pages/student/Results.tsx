@@ -298,9 +298,9 @@ const Results = () => {
             <p><strong>Course:</strong> ${result.course}</p>
             <p><strong>Date:</strong> ${result.date}</p>
             <p><strong>Table score:</strong> ${result.question_type === "forensic" && result.totalPoints > 0
-        ? `${result.earnedPoints}/${result.totalPoints} pts (${result.score}%) | Raw: ${result.raw_score}/${result.raw_total}`
+        ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts) | Raw: ${result.raw_score}/${result.raw_total}`
         : result.raw_score !== undefined && result.raw_total !== undefined
-          ? `${result.raw_score}/${result.raw_total} (${result.score}%)`
+          ? `${result.score}% (${result.raw_score}/${result.raw_total})`
           : (result.score !== undefined ? `${result.score}%` : "-")}</p>
             <p><strong>Findings score:</strong> ${(() => {
             const key = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
@@ -963,9 +963,9 @@ const Results = () => {
                                 <div className="text-sm">
                                   <div><span className="text-xs font-medium text-gray-700">Table:</span>{' '}
                                     {result.question_type === "forensic" && result.totalPoints > 0
-                                      ? `${result.earnedPoints}/${result.totalPoints} (${result.score}%)`
+                                      ? `${result.score}% (${result.earnedPoints}/${result.totalPoints})`
                                       : result.raw_score !== undefined && result.raw_total !== undefined
-                                        ? `${result.raw_score}/${result.raw_total} (${result.score}%)`
+                                        ? `${result.score}% (${result.raw_score}/${result.raw_total})`
                                         : (result.score !== undefined ? `${result.score}%` : "-")}
                                   </div>
                                   <div className="mt-1"><span className="text-xs font-medium text-gray-700">Findings:</span>{' '}
@@ -1055,9 +1055,9 @@ const Results = () => {
                                         <div className="text-sm break-words">
                                           <div><span className="text-muted-foreground text-xs">Table:</span>{' '}
                                             {result.question_type === "forensic" && result.totalPoints > 0
-                                              ? `${result.earnedPoints}/${result.totalPoints} (${result.score}%)`
+                                              ? `${result.score}% (${result.earnedPoints}/${result.totalPoints})`
                                               : result.raw_score !== undefined && result.raw_total !== undefined
-                                                ? `${result.raw_score}/${result.raw_total} (${result.score}%)`
+                                                ? `${result.score}% (${result.raw_score}/${result.raw_total})`
                                                 : (result.score !== undefined ? `${result.score}%` : "-")}
                                           </div>
                                           <div className="mt-1"><span className="text-muted-foreground text-xs">Findings:</span>{' '}
@@ -1563,9 +1563,9 @@ const Results = () => {
                               <div className="text-xs mt-1 text-gray-700">
                                 <span className="font-medium">Table score:</span>{' '}
                                 {result.question_type === "forensic" && result.totalPoints > 0
-                                  ? `${result.earnedPoints}/${result.totalPoints} pts (${result.score}%)`
+                                  ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
                                   : result.raw_score !== undefined && result.raw_total !== undefined
-                                    ? `${result.raw_score}/${result.raw_total} (${result.score}%)`
+                                    ? `${result.score}% (${result.raw_score}/${result.raw_total})`
                                     : (result.score !== undefined ? `${result.score}%` : "-")}
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
