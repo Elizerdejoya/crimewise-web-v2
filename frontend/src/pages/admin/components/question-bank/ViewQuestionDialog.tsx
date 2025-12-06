@@ -314,19 +314,30 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                       </span>
                     </Label>
                     {forensicData.explanation.conclusion && (
-                      <div className="p-2 bg-gray-50 rounded-md mb-2">
-                        <span className="font-medium">Conclusion: </span>
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            forensicData.explanation.conclusion === "fake"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {forensicData.explanation.conclusion === "fake"
-                            ? "Not Written by Same Person"
-                            : "Written by Same Person"}
-                        </span>
+                      <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg mb-3 border border-blue-200">
+                        <span className="font-medium text-gray-700">Selected Conclusion: </span>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            disabled
+                            className={`px-4 py-2 rounded-md font-semibold text-sm transition-all ${
+                              forensicData.explanation.conclusion === "fake"
+                                ? "bg-red-500 text-white"
+                                : "bg-gray-200 text-gray-500"
+                            }`}
+                          >
+                            Not Written by Same Person
+                          </button>
+                          <button
+                            disabled
+                            className={`px-4 py-2 rounded-md font-semibold text-sm transition-all ${
+                              forensicData.explanation.conclusion === "real"
+                                ? "bg-green-500 text-white"
+                                : "bg-gray-200 text-gray-500"
+                            }`}
+                          >
+                            Written by Same Person
+                          </button>
+                        </div>
                       </div>
                     )}
                     {forensicData.explanation.text && (
