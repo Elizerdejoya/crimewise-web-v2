@@ -808,6 +808,24 @@ router.delete(
         }
       }
 
+      // Delete related records first (cascade delete to handle foreign keys)
+      // 1. Delete AI grades for results of this exam
+      await db.sql`
+        DELETE FROM ai_grades 
+        WHERE result_id IN (SELECT id FROM results WHERE exam_id = ${examId})
+      `;
+      
+      // 2. Delete results (participant submissions)
+      await db.sql`
+        DELETE FROM results WHERE exam_id = ${examId}
+      `;
+      
+      // 3. Delete from ai_queue (any pending grading jobs)
+      await db.sql`
+        DELETE FROM ai_queue WHERE exam_id = ${examId}
+      `;
+      
+      // 4. Finally delete the exam
       const result = await db.sql`DELETE FROM exams WHERE id = ${examId}`;
 
       if (result.rowsAffected === 0) {
