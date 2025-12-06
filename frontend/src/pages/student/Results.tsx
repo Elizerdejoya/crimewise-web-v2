@@ -451,18 +451,6 @@ const Results = () => {
           });
 
           examContent += `</tbody></table>`;
-
-          // Add scoring summary
-          examContent += `
-            <div class="scoring-summary" style="margin: 20px 0; padding: 12px; background-color: #f5f5f5; border-radius: 4px;">
-              <h3 style="margin: 0 0 8px 0; font-size: 14px;">Scoring Summary</h3>
-              <div class="summary-grid" style="font-size: 12px;">
-                <div><strong>Raw Score:</strong> ${result.raw_score}/${result.raw_total}</div>
-                ${result.totalPoints > 0 ? `<div><strong>Points:</strong> ${result.earnedPoints}/${result.totalPoints}</div>` : ''}
-                <div><strong>Percentage:</strong> ${result.score}%</div>
-              </div>
-            </div>
-          `;
         }
 
         // Add conclusion section
@@ -857,7 +845,7 @@ const Results = () => {
       totalPoints,
       earnedPoints,
       score,
-      examName: result.examName || result.exam_id,
+      examName: result.examName || result.exam_name || result.name || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
   }).sort((a, b) => {
