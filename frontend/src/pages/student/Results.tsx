@@ -80,6 +80,10 @@ const Results = () => {
       })
       .then(data => {
         const resultsData = Array.isArray(data) ? data : [];
+        console.log('Results from backend:', resultsData);
+        if (resultsData.length > 0) {
+          console.log('First result sample:', JSON.stringify(resultsData[0], null, 2));
+        }
         setResults(resultsData);
         setFilteredResults(resultsData);
         // kick off background fetch of AI grades (non-blocking)
@@ -761,19 +765,23 @@ const Results = () => {
           ? JSON.parse(result.details) 
           : result.details;
         
+        console.log('Processing result ID:', result.id, 'Details:', detailsObj);
+        
         // Extract scoring information from details
         if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
-          raw_score = detailsObj.totalScore;
-          raw_total = detailsObj.totalPossiblePoints;
+          raw_score = parseInt(detailsObj.totalScore, 10);
+          raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
+          console.log('Found raw_score:', raw_score, 'raw_total:', raw_total, 'types:', typeof raw_score, typeof raw_total);
         }
         
         // Extract explanation/findings score if available
         if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
           // These are additional points for explanation/conclusion
-          const explanationScore = detailsObj.explanationScore;
-          const explanationPoints = detailsObj.explanationPoints;
+          const explanationScore = parseInt(detailsObj.explanationScore, 10);
+          const explanationPoints = parseInt(detailsObj.explanationPoints, 10);
           totalPoints = (raw_total || 0) + explanationPoints;
           earnedPoints = (raw_score || 0) + explanationScore;
+          console.log('Found explanation scores - totalPoints:', totalPoints, 'earnedPoints:', earnedPoints);
         }
       } catch (e) {
         console.error("Error parsing details:", e);
@@ -782,11 +790,17 @@ const Results = () => {
 
     // Calculate percentage score using points system if available, otherwise raw score
     let score = result.score;
-    if (totalPoints > 0) {
-      score = Math.round((earnedPoints / totalPoints) * 100);
-    } else if (raw_score !== undefined && raw_total !== undefined) {
-      score = raw_total > 0 ? Math.round((raw_score / raw_total) * 100) : 0;
+    
+    // If we extracted raw_score and raw_total from details, calculate the percentage
+    if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
+      score = Math.round((raw_score / raw_total) * 100);
     }
+    // If totalPoints was calculated (with explanation), use that
+    else if (totalPoints > 0) {
+      score = Math.round((earnedPoints / totalPoints) * 100);
+    }
+
+    console.log('Final processed - ID:', result.id, 'answer exists:', !!result.answer, 'details exists:', !!result.details, 'raw_score:', raw_score, 'raw_total:', raw_total, 'score:', score);
 
     const getCourseName = (r: any) => {
       // First check if course name came directly from backend (course_name field)
@@ -802,6 +816,8 @@ const Results = () => {
 
     return {
       ...result,
+      answer: result.answer,
+      details: result.details,
       raw_score,
       raw_total,
       totalPoints,
