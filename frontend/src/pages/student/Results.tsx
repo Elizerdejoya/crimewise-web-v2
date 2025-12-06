@@ -82,17 +82,6 @@ const Results = () => {
         const resultsData = Array.isArray(data) ? data : [];
         setResults(resultsData);
         setFilteredResults(resultsData);
-        // Extract unique exam data from results (exams already included in results)
-        const examMap: Record<string, any> = {};
-        resultsData.forEach((result: any) => {
-          if (result.exam_id && !examMap[result.exam_id]) {
-            examMap[result.exam_id] = {
-              id: result.exam_id,
-              name: result.exam_name || result.examName || `Exam ${result.exam_id}`,
-            };
-          }
-        });
-        setExams(Object.values(examMap));
         // kick off background fetch of AI grades (non-blocking)
         fetchAiGradesForResults(resultsData);
         // fetch ai_queue status for these results so we can show requeue button when eligible
@@ -866,7 +855,7 @@ const Results = () => {
       totalPoints,
       earnedPoints,
       score,
-      examName: resolveExamName(result.exam_id) || result.examName || result.exam_name || result.name || `Exam ${result.exam_id}`,
+      examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
   }).sort((a, b) => {
