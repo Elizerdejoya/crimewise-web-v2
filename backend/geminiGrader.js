@@ -225,14 +225,18 @@ Return ONLY valid JSON with these exact fields:
     // Step 1: Remove quoted identifiers and entire phrases containing programming terms
     feedback = feedback.replace(/['"][^'"]*['"][,\.\s]?/g, ' ');
     
-    // Step 2: Remove entire phrases/sentences containing technical terms
+    // Step 2: Remove entire sentences/phrases containing technical terms FIRST (before word-level cleanup)
     const bannedPhrases = [
-      /\b(minor|trivial|minor\s+)?deduction.{0,50}?structural elements/gi,
-      /\b(minor|trivial)?.*?tableAnswers/gi,
-      /\b(minor|trivial)?.*?conclusion field/gi,
-      /\b(minor|trivial)?.*?additional fields/gi,
-      /\b(minor|trivial)?.*?additional structure/gi,
-      /\baside from.{0,50}?includes/gi,
+      /.*\b(minor|trivial)?.*deduction.{0,100}?structural elements.*/gi,
+      /.*\bincluded additional.{0,50}?tableAnswers.*/gi,
+      /.*\bincluded additional.{0,50}?conclusion.*/gi,
+      /.*\bwent beyond.{0,50}?concise.*/gi,
+      /.*\badditional fields.*/gi,
+      /.*\badditional structure.*/gi,
+      /.*\baside from.{0,50}?includes.*/gi,
+      /.*\bstructural element.*/gi,
+      /.*\btableAnswer.*/gi,
+      /.*\bconcrete/gi,
     ];
     
     for (const phrase of bannedPhrases) {
@@ -266,6 +270,8 @@ Return ONLY valid JSON with these exact fields:
       /\belements\b/gi,
       /\bexplanation\b/gi,
       /\bconclusion\b/gi,
+      /\bminor deduction\b/gi,
+      /\btrivial\b/gi,
     ];
     
     for (const term of technicalTerms) {
@@ -275,6 +281,7 @@ Return ONLY valid JSON with these exact fields:
     // Step 4: Remove sentences containing these patterns
     const bannedPatterns = [
       /minor.*deduction/i,
+      /trivial.*deduction/i,
       /\bjson\b/i,
       /\bformat\b/i,
       /\bstructured\b/i,
@@ -291,10 +298,14 @@ Return ONLY valid JSON with these exact fields:
       /\bthe.*table/i,
       /\bthe.*field/i,
       /\bthe.*conclusion\b/i,
+      /\bthe.*conclusion\b/i,
       /\bquoted/i,
       /structural.*element/i,
       /additional.*structural/i,
       /tableAnswer/i,
+      /went beyond/i,
+      /deduction.*concise/i,
+      /went beyond/i,
     ];
     
     try {

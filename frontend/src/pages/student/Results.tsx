@@ -1439,49 +1439,46 @@ const Results = () => {
                                               console.error("Error parsing conclusion data:", e);
                                             }
 
+                                            // Helper function to convert conclusion to readable text
+                                            const formatConclusion = (conclusion: string) => {
+                                              if (conclusion === "fake") return "Not Written by Same Person";
+                                              if (conclusion === "real") return "Written by Same Person";
+                                              return conclusion.charAt(0).toUpperCase() + conclusion.slice(1);
+                                            };
+
                                             return (studentConclusion || expectedConclusion) ? (
                                               <div className="mt-6 pt-3 border-t">
-                                                <h3 className="text-lg font-medium">Forensic Conclusion</h3>
-                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+                                                <h3 className="text-lg font-medium mb-4">Forensic Conclusion</h3>
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                                   {studentConclusion && (
-                                                    <div>
-                                                      <h4 className="text-sm font-medium mb-2">Your Conclusion</h4>
-                                                      <div className={`p-3 rounded-md ${expectedConclusion && studentConclusion === expectedConclusion
-                                                        ? 'bg-green-50 border border-green-200'
+                                                    <div className={`p-4 rounded-md border-2 ${expectedConclusion && studentConclusion === expectedConclusion
+                                                      ? 'bg-green-50 border-green-300'
+                                                      : expectedConclusion && studentConclusion !== expectedConclusion
+                                                        ? 'bg-yellow-50 border-yellow-300'
+                                                        : 'bg-gray-50 border-gray-200'
+                                                      }`}>
+                                                      <h4 className="text-sm font-medium text-gray-600 mb-3">Your Conclusion:</h4>
+                                                      <div className={`text-lg font-bold ${expectedConclusion && studentConclusion === expectedConclusion
+                                                        ? 'text-green-700'
                                                         : expectedConclusion && studentConclusion !== expectedConclusion
-                                                          ? 'bg-red-50 border border-red-200'
-                                                          : 'bg-gray-50'
+                                                          ? 'text-yellow-700'
+                                                          : 'text-gray-700'
                                                         }`}>
-                                                        <div className="flex items-center flex-wrap">
-                                                          <span className="capitalize font-medium break-words">
-                                                            {studentConclusion} Specimen
-                                                          </span>
-                                                          {expectedConclusion && (
-                                                            <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0 ${studentConclusion === expectedConclusion ? 'bg-green-100' : 'bg-red-100'
-                                                              }`}>
-                                                              {studentConclusion === expectedConclusion ?
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                </svg>
-                                                                :
-                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                                                                </svg>
-                                                              }
-                                                            </span>
-                                                          )}
-                                                        </div>
+                                                        {formatConclusion(studentConclusion)}
                                                       </div>
+                                                      {expectedConclusion && (
+                                                        <div className={`mt-2 text-sm font-semibold ${studentConclusion === expectedConclusion ? 'text-green-600' : 'text-red-600'}`}>
+                                                          {studentConclusion === expectedConclusion ? '✓ Correct' : '✗ Incorrect'}
+                                                        </div>
+                                                      )}
                                                     </div>
                                                   )}
 
                                                   {expectedConclusion && (
-                                                    <div>
-                                                      <h4 className="text-sm font-medium mb-2">Expected Conclusion</h4>
-                                                      <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
-                                                        <span className="capitalize font-medium break-words">
-                                                          {expectedConclusion} Specimen
-                                                        </span>
+                                                    <div className="p-4 rounded-md border-2 bg-blue-50 border-blue-300">
+                                                      <h4 className="text-sm font-medium text-gray-600 mb-3">Correct Answer:</h4>
+                                                      <div className="text-lg font-bold text-blue-700">
+                                                        {formatConclusion(expectedConclusion)}
                                                       </div>
                                                     </div>
                                                   )}
