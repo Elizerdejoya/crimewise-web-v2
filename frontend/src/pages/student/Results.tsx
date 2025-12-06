@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/config";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Eye, ArrowUpDown, ArrowUp, ArrowDown, FileText, Tags } from "lucide-react";
+import { Search, Eye, ArrowUpDown, ArrowUp, ArrowDown, FileText, Tags, RefreshCw } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -40,6 +40,7 @@ const Results = () => {
   const [results, setResults] = useState<any[]>([]);
     const [aiQueueMap, setAiQueueMap] = useState<Record<string, any>>({});
     const [requeueLoading, setRequeueLoading] = useState<Record<string, boolean>>({});
+    const [isReloading, setIsReloading] = useState<boolean>(false);
   const [filteredResults, setFilteredResults] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedResult, setSelectedResult] = useState<any>(null);
@@ -55,7 +56,8 @@ const Results = () => {
   const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const isMobileDevice = () => typeof window !== 'undefined' && (window.matchMedia?.('(max-width: 600px)')?.matches || /Mobi|Android/i.test(navigator.userAgent));
 
-  useEffect(() => {
+  // Fetch results from API
+  const fetchStudentResults = () => {
     const token = localStorage.getItem("token");
     if (!token) return;
     const decoded: JwtTokenPayload = jwtDecode(token);
@@ -99,6 +101,10 @@ const Results = () => {
           variant: "destructive",
         });
       });
+  };
+
+  useEffect(() => {
+    fetchStudentResults();
   }, []);
 
   // Helper function to safely call trim on a value
@@ -279,24 +285,24 @@ const Results = () => {
   // Generate detailed exam content (body only; logos added by header/footer)
   let examContent = `
         <div class="exam-header">
-        <h1>Exam Result: ${result.examName}</h1>
-        <div class="exam-info">
-          <p><strong>Course:</strong> ${result.course}</p>
-          <p><strong>Date:</strong> ${result.date}</p>
-          <p><strong>Table score:</strong> ${result.question_type === "forensic" && result.totalPoints > 0
+          <h1>Exam Result: ${result.examName}</h1>
+          <div class="exam-info" style="margin-top: 12px;">
+            <p><strong>Course:</strong> ${result.course}</p>
+            <p><strong>Date:</strong> ${result.date}</p>
+            <p><strong>Table score:</strong> ${result.question_type === "forensic" && result.totalPoints > 0
         ? `${result.earnedPoints}/${result.totalPoints} pts (${result.score}%) | Raw: ${result.raw_score}/${result.raw_total}`
         : result.raw_score !== undefined && result.raw_total !== undefined
           ? `${result.raw_score}/${result.raw_total} (${result.score}%)`
           : (result.score !== undefined ? `${result.score}%` : "-")}</p>
-          <p><strong>Findings score:</strong> ${(() => {
+            <p><strong>Findings score:</strong> ${(() => {
             const key = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
             const v = aiScores[key];
             const findingsMaxPts = getFindingsMaxPoints(result);
             const pts = pointsFromPercent(v, findingsMaxPts);
             return v === undefined ? 'Loading...' : (v === null ? 'N/A' : `${v}% ${pts !== null ? `(${pts}/${findingsMaxPts})` : ''}`);
           })()}</p>
+          </div>
         </div>
-      </div>
     `;
 
     // NOTE: Keyword pool removed from printed output per request.
@@ -353,16 +359,16 @@ const Results = () => {
         };
 
         examContent += `
-          <div style="margin-top:20px; padding:15px; border:1px solid #e5e7eb; border-radius:8px; background: #fff;">
-            <h3 style="margin:0 0 8px 0;">AI Rubric Breakdown</h3>
-            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; font-size:13px;">
+          <div style="margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 14px;">AI Rubric Breakdown</h3>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 12px;">
               <div><strong>Accuracy:</strong> ${fmtComp(displayVals.accuracy)}</div>
               <div><strong>Completeness:</strong> ${fmtComp(displayVals.completeness)}</div>
               <div><strong>Clarity:</strong> ${fmtComp(displayVals.clarity)}</div>
               <div><strong>Objectivity:</strong> ${fmtComp(displayVals.objectivity)}</div>
-              <div style="grid-column: 1 / -1; margin-top:8px;"><strong>Overall Score:</strong> ${!Number.isNaN(overall) ? `${Math.round(overall)}%` : '-'}</div>
+              <div style="grid-column: 1 / -1; margin-top: 8px;"><strong>Overall Score:</strong> ${!Number.isNaN(overall) ? `${Math.round(overall)}%` : '-'}</div>
             </div>
-            ${aiGradeData.feedback ? `<div style="margin-top:10px;"><strong>AI Explanation:</strong><div style="margin-top:6px; white-space:pre-wrap;">${aiGradeData.feedback}</div></div>` : ''}
+            ${aiGradeData.feedback ? `<div style="margin-top: 10px;"><strong>AI Explanation:</strong><div style="margin-top: 6px; white-space: pre-wrap; font-size: 12px;">${aiGradeData.feedback}</div></div>` : ''}
           </div>
         `;
       } catch (e) {
@@ -394,8 +400,8 @@ const Results = () => {
 
         if (columns.length > 0) {
           examContent += `
-            <div class="answers-section">
-              <h2>Answer Details</h2>
+            <div class="answers-section" style="margin: 25px 0;">
+              <h2 style="font-size: 16px; margin: 0 0 12px 0;">Answer Details</h2>
               <table class="answers-table">
                 <thead>
                   <tr>
@@ -448,9 +454,9 @@ const Results = () => {
 
           // Add scoring summary
           examContent += `
-            <div class="scoring-summary">
-              <h3>Scoring Summary</h3>
-              <div class="summary-grid">
+            <div class="scoring-summary" style="margin: 20px 0; padding: 12px; background-color: #f5f5f5; border-radius: 4px;">
+              <h3 style="margin: 0 0 8px 0; font-size: 14px;">Scoring Summary</h3>
+              <div class="summary-grid" style="font-size: 12px;">
                 <div><strong>Raw Score:</strong> ${result.raw_score}/${result.raw_total}</div>
                 ${result.totalPoints > 0 ? `<div><strong>Points:</strong> ${result.earnedPoints}/${result.totalPoints}</div>` : ''}
                 <div><strong>Percentage:</strong> ${result.score}%</div>
@@ -481,23 +487,14 @@ const Results = () => {
         if (studentConclusion || expectedConclusion) {
           const conclusionMatch = studentConclusion && expectedConclusion && studentConclusion === expectedConclusion;
           examContent += `
-            <div class="conclusion-section" style="margin: 20px 0; padding: 16px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #007bff;">
-              <h3 style="margin-top: 0; margin-bottom: 16px; color: #333;">Forensic Conclusion</h3>
-              <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-                ${studentConclusion ? `
-                  <div style="flex: 1; min-width: 250px; padding: 12px; background: white; border-radius: 6px; border: 2px solid ${conclusionMatch ? '#28a745' : '#ffc107'};">
-                    <strong style="display: block; margin-bottom: 8px; color: #666;">Your Conclusion:</strong>
-                    <span style="font-size: 18px; font-weight: bold; color: ${conclusionMatch ? '#28a745' : '#ffc107'};">${formatConclusion(studentConclusion)}</span>
-                    ${conclusionMatch ? '<span style="margin-left: 8px; color: #28a745;">✓ Correct</span>' : (expectedConclusion ? '<span style="margin-left: 8px; color: #dc3545;">✗ Incorrect</span>' : '')}
-                  </div>
-                ` : ''}
-                ${expectedConclusion ? `
-                  <div style="flex: 1; min-width: 250px; padding: 12px; background: white; border-radius: 6px; border: 2px solid #007bff;">
-                    <strong style="display: block; margin-bottom: 8px; color: #666;">Correct Answer:</strong>
-                    <span style="font-size: 18px; font-weight: bold; color: #007bff;">${formatConclusion(expectedConclusion)}</span>
-                  </div>
-                ` : ''}
-              </div>
+            <div class="conclusion-section" style="margin: 25px 0; padding: 16px; background: #f8f9fa; border-radius: 8px;">
+              <h3 style="margin: 0 0 12px 0; color: #333; font-size: 14px; font-weight: 600;">Forensic Conclusion</h3>
+              ${studentConclusion ? `
+                <p style="margin: 6px 0; font-size: 13px;"><strong>Your Conclusion:</strong> ${formatConclusion(studentConclusion)} ${conclusionMatch ? '<span style="color: #28a745; font-weight: 600;">✓ Correct</span>' : (expectedConclusion ? '<span style="color: #dc3545; font-weight: 600;">✗ Incorrect</span>' : '')}</p>
+              ` : ''}
+              ${expectedConclusion ? `
+                <p style="margin: 6px 0; font-size: 13px;"><strong>Correct Answer:</strong> ${formatConclusion(expectedConclusion)}</p>
+              ` : ''}
             </div>
           `;
         }
@@ -574,37 +571,44 @@ const Results = () => {
             <head>
               <title>Exam Result: ${result.examName}</title>
               <style>
-            body { font-family: Arial, sans-serif; padding: 20px; margin: 0; }
-            .exam-header { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #333; }
-            .exam-header h1 { margin: 0 0 15px 0; color: #333; }
-            .exam-info p { margin: 5px 0; }
-            .answers-section { margin: 30px 0; }
-            .answers-section h2 { color: #333; margin-bottom: 15px; }
-            .answers-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            * { box-sizing: border-box; }
+            body { 
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+              font-size: 13px;
+              line-height: 1.5;
+              color: #333;
+              padding: 20px; 
+              margin: 0; 
+            }
+            h1 { font-size: 20px; font-weight: 600; margin: 0; }
+            h2 { font-size: 16px; font-weight: 600; margin: 20px 0 12px 0; color: #333; }
+            h3 { font-size: 14px; font-weight: 600; margin: 12px 0 8px 0; color: #333; }
+            p { margin: 6px 0; font-size: 13px; }
+            strong { font-weight: 600; }
+            
+            .exam-header { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #333; }
+            .exam-info p { margin: 6px 0; }
+            .answers-section { margin: 25px 0; }
+            .answers-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
             .answers-table th, .answers-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            .answers-table th { background-color: #f2f2f2; font-weight: bold; }
-            .correct { background-color: #d4edda; color: #155724; }
-            .incorrect { background-color: #f8d7da; color: #721c24; }
-            .indicator { font-weight: bold; margin-left: 5px; }
-            .scoring-summary { margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 5px; }
-            .scoring-summary h3 { margin: 0 0 10px 0; }
-            .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-            .conclusion-section, .explanation-section, .feedback-section { margin: 25px 0; }
-            .conclusion-section h3, .explanation-section h3, .feedback-section h3 { color: #333; margin-bottom: 10px; }
-            .conclusion-item { margin: 10px 0; }
-            .explanation-text { background-color: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
-            small { font-size: 0.8em; color: #666; }
+            .answers-table th { background-color: #f0f0f0; font-weight: 600; }
+            .correct { background-color: #e8f5e9; }
+            .incorrect { background-color: #ffebee; }
+            .indicator { font-weight: 600; margin-left: 6px; }
+            .scoring-summary { margin: 20px 0; padding: 12px; background-color: #f5f5f5; border-radius: 4px; }
+            .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 12px; }
+            .conclusion-section, .explanation-section, .feedback-section { margin: 20px 0; }
+            .explanation-text { background-color: #f5f5f5; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 12px; }
+            small { font-size: 11px; color: #666; }
 
             /* Mobile preview/print adjustments */
             @media (max-width: 600px) {
-              body { padding: 10px; }
-              .exam-header h1 { font-size: 18px; margin-bottom: 8px; }
-              .answers-table, .answers-table thead, .answers-table tbody, .answers-table th, .answers-table td, .answers-table tr { display: block; width: 100%; }
-              .answers-table thead { display: none; }
-              .answers-table tr { margin-bottom: 10px; border: 1px solid #eaeaea; padding: 8px; border-radius: 6px; }
-              .answers-table td { border: none; padding: 6px 0; }
+              body { padding: 10px; font-size: 12px; }
+              h1 { font-size: 16px; }
+              h2 { font-size: 14px; }
+              .answers-table { font-size: 11px; }
+              .answers-table th, .answers-table td { padding: 6px; }
               .print-logo-top, .print-logo-bottom { width: 200px; max-width: 80%; height: auto; }
-              .scoring-summary { padding: 10px; }
             }
 
             @media print {
@@ -619,7 +623,7 @@ const Results = () => {
               ${headerHtml}
               <div style="margin-top: 20px;">${examContent}</div>
               ${footerHtml}
-              <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #666;">
+              <div style="margin-top: 30px; text-align: center; font-size: 11px; color: #999;">
                 Printed on: ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
               </div>
             </body>
@@ -663,6 +667,15 @@ const Results = () => {
       setAiQueueMap(prev => ({ ...prev, ...map }));
     } catch (e) {
       // ignore
+    }
+  };
+
+  const handleReload = async () => {
+    setIsReloading(true);
+    try {
+      fetchStudentResults();
+    } finally {
+      setIsReloading(false);
     }
   };
 
@@ -910,14 +923,19 @@ const Results = () => {
           </p>
         </div>
 
-        <div className="flex items-center mb-4">
-          <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by exam name, course, or date..."
-            value={searchTerm}
-            onChange={handleSearch}
-            className="w-full sm:max-w-sm"
-          />
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center flex-1 sm:flex-none">
+            <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by exam name, course, or date..."
+              value={searchTerm}
+              onChange={handleSearch}
+              className="w-full sm:max-w-sm"
+            />
+          </div>
+          <Button size="sm" variant="outline" onClick={handleReload} disabled={isReloading}>
+            <RefreshCw className={`h-4 w-4 ${isReloading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
           <Card>
