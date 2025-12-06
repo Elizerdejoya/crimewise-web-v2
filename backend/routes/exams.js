@@ -616,7 +616,7 @@ router.get(
           r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
           r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
           r.organization_id, r.percentage, r.status,
-          e.id as exam_id_num, e.name, e.title, e.course_id, e.start, e.end, e.duration, 
+          e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
           e.token, e.class_id, e.instructor_id,
           c.name as course_name, c.code as course_code
         FROM results r
@@ -633,7 +633,7 @@ router.get(
           r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
           r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
           r.organization_id, r.percentage, r.status,
-          e.id as exam_id_num, e.name, e.title, e.course_id, e.start, e.end, e.duration, 
+          e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
           e.token, e.class_id, e.instructor_id,
           c.name as course_name, c.code as course_code
         FROM results r

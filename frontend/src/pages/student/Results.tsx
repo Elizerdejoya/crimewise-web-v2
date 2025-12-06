@@ -860,7 +860,7 @@ const Results = () => {
       totalPoints,
       earnedPoints,
       score,
-      examName: result.examName || result.exam_name || result.name || result.title || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
+      examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
       course: getCourseName(result),
     };
   }).sort((a, b) => {
