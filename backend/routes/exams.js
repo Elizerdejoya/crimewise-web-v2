@@ -230,7 +230,7 @@ router.post(
       const token = generateToken();
 
       const result = await db.sql`
-      INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, end, duration, token) 
+      INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
       VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
       RETURNING id
     `;
@@ -722,7 +722,7 @@ router.put(
           instructor_id = ${instructorId}, 
           question_id = ${questionId}, 
           start = ${start}, 
-          end = ${end}, 
+          "end" = ${end}, 
           duration = ${duration}
       WHERE id = ${examId}
     `;
@@ -877,7 +877,7 @@ router.post(
           const token = generateToken();
 
           const result = await db.sql`
-          INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, end, duration, token) 
+          INSERT INTO exams (name, course_id, class_id, instructor_id, question_id, start, "end", duration, token) 
           VALUES (${name}, ${course_id}, ${class_id}, ${instructor_id}, ${question_id}, ${start}, ${end}, ${duration}, ${token})
           RETURNING id
         `;
@@ -957,7 +957,7 @@ router.patch("/bulk", async (req, res) => {
               instructor_id = ${InstructorId}, 
               question_id = ${questionId}, 
               start = ${start}, 
-              end = ${end}, 
+              "end" = ${end}, 
               duration = ${duration}
           WHERE id = ${examId}
         `;
