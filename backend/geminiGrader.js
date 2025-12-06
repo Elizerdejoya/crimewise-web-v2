@@ -272,6 +272,11 @@ Return ONLY valid JSON with these exact fields:
       /\bconclusion\b/gi,
       /\bminor deduction\b/gi,
       /\btrivial\b/gi,
+      /\b'fake'\b/gi,
+      /\b"fake"\b/gi,
+      /\bfake\b/gi,
+      /\b'real'\b/gi,
+      /\b"real"\b/gi,
     ];
     
     for (const term of technicalTerms) {
@@ -298,14 +303,16 @@ Return ONLY valid JSON with these exact fields:
       /\bthe.*table/i,
       /\bthe.*field/i,
       /\bthe.*conclusion\b/i,
-      /\bthe.*conclusion\b/i,
       /\bquoted/i,
       /structural.*element/i,
       /additional.*structural/i,
       /tableAnswer/i,
       /went beyond/i,
       /deduction.*concise/i,
-      /went beyond/i,
+      /\bfake\b.*logical/i,
+      /'fake'/i,
+      /"fake"/i,
+      /\('fake'\)/i,
     ];
     
     try {
