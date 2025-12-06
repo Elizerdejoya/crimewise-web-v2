@@ -606,28 +606,41 @@ router.get(
       }
 
       // Query results with exam names by joining exams table
-      // Get exam names - select all exam columns so frontend can pick the right one
+      // Handle both old SQLite schema and new PostgreSQL schema
       let query;
       if (orgFilter.hasFilter) {
         // For non-super_admin users, ensure student belongs to same organization
+        // Select result columns first, then exam columns with aliases to avoid conflicts
         query = await db.sql`
-        SELECT r.*, e.*, c.name as course_name, c.code as course_code
+        SELECT 
+          r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
+          r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
+          r.created_at, r.organization_id, r.percentage, r.status,
+          e.id as exam_id_num, e.name, e.title, e.course_id, e.start, e.end, e.duration, 
+          e.token, e.class_id, e.instructor_id,
+          c.name as course_name, c.code as course_code
         FROM results r
         INNER JOIN exams e ON r.exam_id = e.id
         LEFT JOIN courses c ON e.course_id = c.id
         INNER JOIN users u ON r.student_id = u.id
         WHERE r.student_id = ${studentId} AND u.organization_id = ${orgFilter.organizationId}
-        ORDER BY r.submitted_at DESC NULLS LAST
+        ORDER BY COALESCE(r.submitted_at, r.date, r.created_at) DESC
       `;
       } else {
         // Super admin can see all
         query = await db.sql`
-        SELECT r.*, e.*, c.name as course_name, c.code as course_code
+        SELECT 
+          r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
+          r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
+          r.created_at, r.organization_id, r.percentage, r.status,
+          e.id as exam_id_num, e.name, e.title, e.course_id, e.start, e.end, e.duration, 
+          e.token, e.class_id, e.instructor_id,
+          c.name as course_name, c.code as course_code
         FROM results r
         INNER JOIN exams e ON r.exam_id = e.id
         LEFT JOIN courses c ON e.course_id = c.id
         WHERE r.student_id = ${studentId}
-        ORDER BY r.submitted_at DESC NULLS LAST
+        ORDER BY COALESCE(r.submitted_at, r.date, r.created_at) DESC
       `;
       }
 
