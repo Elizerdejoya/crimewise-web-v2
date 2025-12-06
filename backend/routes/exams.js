@@ -641,6 +641,14 @@ router.get(
       `;
       }
 
+      console.log("Student results endpoint - Found query results:", query.length, "rows");
+      if (query.length > 0) {
+        console.log("First row keys:", Object.keys(query[0]));
+        console.log("First row examName:", query[0].examName);
+        console.log("First row name:", query[0].name);
+        console.log("First row title:", query[0].title);
+        console.log("First row exam_id:", query[0].exam_id);
+      }
       res.json(query);
     } catch (err) {
       return res.status(500).json({ error: err.message });
