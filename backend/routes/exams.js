@@ -809,10 +809,10 @@ router.delete(
       }
 
       // Delete related records first (cascade delete to handle foreign keys)
-      // 1. Delete AI grades for results of this exam
+      // 1. Delete AI grades for this exam
       await db.sql`
         DELETE FROM ai_grades 
-        WHERE result_id IN (SELECT id FROM results WHERE exam_id = ${examId})
+        WHERE exam_id = ${examId}
       `;
       
       // 2. Delete results (participant submissions)
