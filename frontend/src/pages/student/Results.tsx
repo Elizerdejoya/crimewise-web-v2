@@ -80,10 +80,6 @@ const Results = () => {
       })
       .then(data => {
         const resultsData = Array.isArray(data) ? data : [];
-        console.log('Results from backend:', resultsData);
-        if (resultsData.length > 0) {
-          console.log('First result sample:', JSON.stringify(resultsData[0], null, 2));
-        }
         setResults(resultsData);
         setFilteredResults(resultsData);
         // kick off background fetch of AI grades (non-blocking)
@@ -765,13 +761,10 @@ const Results = () => {
           ? JSON.parse(result.details) 
           : result.details;
         
-        console.log('Processing result ID:', result.id, 'Details:', detailsObj);
-        
         // Extract scoring information from details
         if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
           raw_score = parseInt(detailsObj.totalScore, 10);
           raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
-          console.log('Found raw_score:', raw_score, 'raw_total:', raw_total, 'types:', typeof raw_score, typeof raw_total);
         }
         
         // Extract explanation/findings score if available
@@ -781,7 +774,6 @@ const Results = () => {
           const explanationPoints = parseInt(detailsObj.explanationPoints, 10);
           totalPoints = (raw_total || 0) + explanationPoints;
           earnedPoints = (raw_score || 0) + explanationScore;
-          console.log('Found explanation scores - totalPoints:', totalPoints, 'earnedPoints:', earnedPoints);
         }
       } catch (e) {
         console.error("Error parsing details:", e);
@@ -799,8 +791,6 @@ const Results = () => {
     else if (totalPoints > 0) {
       score = Math.round((earnedPoints / totalPoints) * 100);
     }
-
-    console.log('Final processed - ID:', result.id, 'answer exists:', !!result.answer, 'details exists:', !!result.details, 'raw_score:', raw_score, 'raw_total:', raw_total, 'score:', score);
 
     const getCourseName = (r: any) => {
       // First check if course name came directly from backend (course_name field)
