@@ -385,28 +385,28 @@ const Results = () => {
     }
 
     // Add detailed answers for forensic questions
-    if (result.question_type === "forensic" && result.answer && result.answer_key) {
+    if (result.answer && result.details) {
       try {
-        let parsedAnswer = [];
-        let parsedKey = [];
-        let columns = [];
+        // Parse answer
+        const rawAnswer = typeof result.answer === 'string' 
+          ? JSON.parse(result.answer)
+          : result.answer;
+        const tableAnswers = rawAnswer.tableAnswers || [];
 
-        // Parse the data
-        const rawAnswer = JSON.parse(result.answer);
-        parsedAnswer = rawAnswer.tableAnswers || rawAnswer;
-
-        const rawKey = JSON.parse(result.answer_key);
-        if (rawKey.specimens && Array.isArray(rawKey.specimens)) {
-          parsedKey = rawKey.specimens;
-        } else if (Array.isArray(rawKey)) {
-          parsedKey = rawKey;
+        // Parse details to get row details
+        const detailsObj = typeof result.details === 'string'
+          ? JSON.parse(result.details)
+          : result.details;
+        
+        const rowDetails = detailsObj.rowDetails || [];
+        
+        // Get columns from first row's columnScores
+        let columns: string[] = [];
+        if (rowDetails.length > 0 && rowDetails[0].columnScores) {
+          columns = Object.keys(rowDetails[0].columnScores);
         }
 
-        columns = parsedKey.length > 0
-          ? Object.keys(parsedKey[0]).filter(k => !['points', 'id', 'rowId'].includes(k))
-          : [];
-
-        if (columns.length > 0) {
+        if (columns.length > 0 && rowDetails.length > 0) {
           examContent += `
             <div class="answers-section" style="margin: 25px 0;">
               <h2 style="font-size: 16px; margin: 0 0 12px 0;">Answer Details</h2>
@@ -421,30 +421,25 @@ const Results = () => {
                 <tbody>
           `;
 
-          parsedKey.forEach((row: any, rowIdx: number) => {
-            let rowCorrectCount = 0;
-            let allCorrectForRow = true;
-            const rowPoints = row.points !== undefined ? Number(row.points) : 1;
+          rowDetails.forEach((row: any, rowIdx: number) => {
+            const rowCorrectCount = Object.values(row.columnScores || {}).filter((col: any) => col.isExactMatch).length;
+            const allCorrectForRow = row.correct || false;
+            const rowPoints = row.possiblePoints || 1;
 
             examContent += `<tr><td>${rowIdx + 1}</td>`;
 
             columns.forEach((col) => {
-              const studentAns = (parsedAnswer[rowIdx]?.[col] || "").toString();
-              const correctAns = (row[col] || "").toString();
-              const isCorrect = studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase();
-
-              if (isCorrect) {
-                rowCorrectCount++;
-              } else {
-                allCorrectForRow = false;
-              }
+              const colScore = row.columnScores?.[col] || {};
+              const isCorrect = colScore.isExactMatch || false;
+              const studentValue = colScore.userValue || "-";
+              const correctValue = colScore.correctValue || "-";
 
               examContent += `
                 <td class="${isCorrect ? 'correct' : 'incorrect'}">
                   <div>
-                    <span>${studentAns}</span>
+                    <span>${studentValue}</span>
                     <span class="indicator">${isCorrect ? '✓' : '✗'}</span>
-                    ${!isCorrect ? `<br><small>Correct: ${correctAns}</small>` : ''}
+                    ${!isCorrect ? `<br><small>Correct: ${correctValue}</small>` : ''}
                   </div>
                 </td>
               `;
@@ -469,8 +464,8 @@ const Results = () => {
           studentConclusion = rawAnswer.conclusion;
         }
 
-        if (rawKey.explanation && rawKey.explanation.conclusion) {
-          expectedConclusion = rawKey.explanation.conclusion;
+        if (detailsObj.explanationDetails && detailsObj.explanationDetails.expectedConclusion) {
+          expectedConclusion = detailsObj.explanationDetails.expectedConclusion;
         }
 
         // Helper function to convert conclusion to readable text
@@ -497,20 +492,35 @@ const Results = () => {
 
         // Add explanation section
         let explanation = "";
+        let expectedExplanation = "";
+        
         if (typeof rawAnswer === 'object' && rawAnswer.explanation) {
           explanation = rawAnswer.explanation;
         }
+        
+        if (detailsObj.explanationDetails && detailsObj.explanationDetails.studentText) {
+          explanation = detailsObj.explanationDetails.studentText;
+        }
+        
+        if (detailsObj.explanation) {
+          expectedExplanation = detailsObj.explanation;
+        }
 
-        if (explanation) {
+        if (explanation || expectedExplanation) {
           examContent += `
-            <div class="explanation-section">
-              <h3>Your Findings</h3>
-              <div class="explanation-text">${explanation}</div>
+            <div class="explanation-section" style="margin: 25px 0;">
+              <h3 style="font-size: 14px; margin: 0 0 8px 0;">Your Findings</h3>
+              <div class="explanation-text" style="background: #f5f5f5; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 13px;">${explanation || '-'}</div>
+              ${expectedExplanation ? `
+                <h3 style="font-size: 14px; margin: 12px 0 8px 0;">Expected Findings</h3>
+                <div class="expected-explanation" style="background: #e3f2fd; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 13px;">${expectedExplanation}</div>
+              ` : ''}
             </div>
           `;
         }
 
       } catch (e) {
+        console.error('Error parsing answer details for print:', e);
         examContent += `<p>Unable to parse detailed answer data.</p>`;
       }
     }
