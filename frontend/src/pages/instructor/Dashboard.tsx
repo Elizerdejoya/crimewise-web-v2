@@ -12,7 +12,7 @@ import { ChartContainer, ChartTooltipContent, ChartLegendContent } from "@/compo
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, LabelList } from "recharts";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Link } from "react-router-dom";
-import { Book, Calendar, FileText } from "lucide-react";
+import { Book, Calendar, FileText, TrendingUp, Users, Award } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
@@ -35,6 +35,7 @@ const InstructorDashboard = () => {
   const [questions, setQuestions] = useState([]);
   const [recentExams, setRecentExams] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [examResults, setExamResults] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [studentChartMode, setStudentChartMode] = useState<'class' | 'course'>('class');
   const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
@@ -183,6 +184,31 @@ const InstructorDashboard = () => {
       .catch(err => console.error('Error fetching classes:', err));
   }, []);
 
+  // Fetch exam results for analytics (for each recent exam)
+  useEffect(() => {
+    if (recentExams.length === 0) return;
+
+    const fetchResults = async () => {
+      const results: Record<string, any[]> = {};
+      for (const exam of recentExams) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/exams/results/${exam.id}`, {
+            headers: getAuthHeaders(),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            results[exam.id] = Array.isArray(data) ? data : (data.results || []);
+          }
+        } catch (err) {
+          console.error(`Error fetching results for exam ${exam.id}:`, err);
+        }
+      }
+      setExamResults(results);
+    };
+
+    fetchResults();
+  }, [recentExams]);
+
   // Helper to extract student count robustly
   function getStudentCount(obj: any) {
     if (!obj) return 0;
@@ -196,6 +222,169 @@ const InstructorDashboard = () => {
     if (typeof obj.num_students === 'number') return obj.num_students;
     return 0;
   }
+
+  // Calculate exam performance metrics (both table and findings scores)
+  const getExamPerformance = (examId: number) => {
+    const results = examResults[examId] || [];
+    if (results.length === 0) {
+      return { 
+        tableAvgScore: 0, tablePassRate: 0,
+        findingsAvgScore: 0, findingsPassRate: 0,
+        completionRate: 0, participants: 0 
+      };
+    }
+
+    // Extract table scores
+    const tableScores = results
+      .map((r: any) => {
+        let score = r.score;
+        
+        // Try to extract score from details like in Results.tsx
+        if (r.details) {
+          try {
+            const detailsObj = typeof r.details === 'string' 
+              ? JSON.parse(r.details) 
+              : r.details;
+            
+            if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+              const raw_score = parseInt(detailsObj.totalScore, 10);
+              const raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
+              if (raw_total > 0) {
+                score = Math.round((raw_score / raw_total) * 100);
+              }
+            }
+          } catch (e) {
+            // Fallback to original score
+          }
+        }
+        
+        if (typeof score === 'string') return parseFloat(score);
+        if (typeof score === 'number') return score;
+        return 0;
+      })
+      .filter((s: number) => !isNaN(s) && s !== null && s !== undefined);
+
+    // Extract findings scores from details
+    const findingsScores = results
+      .map((r: any) => {
+        if (r.details) {
+          try {
+            const detailsObj = typeof r.details === 'string' 
+              ? JSON.parse(r.details) 
+              : r.details;
+            
+            if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
+              const expScore = parseInt(detailsObj.explanationScore, 10);
+              const expTotal = parseInt(detailsObj.explanationPoints, 10);
+              if (expTotal > 0) {
+                return Math.round((expScore / expTotal) * 100);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        return 0;
+      })
+      .filter((s: number) => !isNaN(s) && s !== null && s !== undefined);
+
+    const tableAvgScore = tableScores.length > 0 ? Math.round(tableScores.reduce((a, b) => a + b, 0) / tableScores.length) : 0;
+    const tablePassCount = tableScores.filter((s: number) => s >= 60).length;
+    const tablePassRate = tableScores.length > 0 ? Math.round((tablePassCount / tableScores.length) * 100) : 0;
+
+    const findingsAvgScore = findingsScores.length > 0 ? Math.round(findingsScores.reduce((a, b) => a + b, 0) / findingsScores.length) : 0;
+    const findingsPassCount = findingsScores.filter((s: number) => s >= 60).length;
+    const findingsPassRate = findingsScores.length > 0 ? Math.round((findingsPassCount / findingsScores.length) * 100) : 0;
+
+    return {
+      tableAvgScore,
+      tablePassRate,
+      findingsAvgScore,
+      findingsPassRate,
+      completionRate: 100,
+      participants: results.length,
+    };
+  };
+
+  // Get top performing students across all exams (both scores combined)
+  const getTopPerformers = () => {
+    const studentScores: Record<string, { name: string; tableScores: number[]; findingsScores: number[]; examCount: number }> = {};
+
+    Object.values(examResults).forEach((results: any[]) => {
+      (results || []).forEach((result: any) => {
+        const studentId = result.student_id;
+        const studentName = result.student_name || `Student ${studentId}`;
+        
+        // Extract table score
+        let tableScore = result.score;
+        if (result.details) {
+          try {
+            const detailsObj = typeof result.details === 'string' 
+              ? JSON.parse(result.details) 
+              : result.details;
+            
+            if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+              const raw_score = parseInt(detailsObj.totalScore, 10);
+              const raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
+              if (raw_total > 0) {
+                tableScore = Math.round((raw_score / raw_total) * 100);
+              }
+            }
+          } catch (e) {
+            // Fallback to original score
+          }
+        }
+        tableScore = typeof tableScore === 'string' ? parseFloat(tableScore) : (typeof tableScore === 'number' ? tableScore : 0);
+
+        // Extract findings score
+        let findingsScore = 0;
+        if (result.details) {
+          try {
+            const detailsObj = typeof result.details === 'string' 
+              ? JSON.parse(result.details) 
+              : result.details;
+            
+            if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
+              const expScore = parseInt(detailsObj.explanationScore, 10);
+              const expTotal = parseInt(detailsObj.explanationPoints, 10);
+              if (expTotal > 0) {
+                findingsScore = Math.round((expScore / expTotal) * 100);
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        if (!studentScores[studentId]) {
+          studentScores[studentId] = { name: studentName, tableScores: [], findingsScores: [], examCount: 0 };
+        }
+        if (!isNaN(tableScore) && tableScore !== null && tableScore !== undefined) {
+          studentScores[studentId].tableScores.push(tableScore);
+        }
+        if (!isNaN(findingsScore) && findingsScore !== null && findingsScore !== undefined) {
+          studentScores[studentId].findingsScores.push(findingsScore);
+        }
+        studentScores[studentId].examCount += 1;
+      });
+    });
+
+    return Object.entries(studentScores)
+      .map(([, data]) => {
+        const tableAvg = data.tableScores.length > 0 ? Math.round(data.tableScores.reduce((a, b) => a + b, 0) / data.tableScores.length) : 0;
+        const findingsAvg = data.findingsScores.length > 0 ? Math.round(data.findingsScores.reduce((a, b) => a + b, 0) / data.findingsScores.length) : 0;
+        const combinedAvg = Math.round((tableAvg + findingsAvg) / 2);
+        return {
+          name: data.name,
+          tableAvg,
+          findingsAvg,
+          avgScore: combinedAvg,
+          examsCompleted: data.examCount,
+        };
+      })
+      .sort((a, b) => b.avgScore - a.avgScore)
+      .slice(0, 10);
+  };
 
   // Format date for display (e.g., Nov 25, 2025)
   const formatDate = (dateStr: string | null | undefined) => {
@@ -224,47 +413,47 @@ const InstructorDashboard = () => {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Card>
+          <Card className="border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle className="text-sm font-medium">Assigned Courses</CardTitle>
-                <CardDescription>Courses you're teaching</CardDescription>
+                <CardTitle className="text-sm font-semibold">Assigned Courses</CardTitle>
+                <CardDescription className="text-xs">Courses you're teaching</CardDescription>
               </div>
-              <Book className="h-4 w-4 text-muted-foreground" />
+              <Book className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{courses.length}</div>
-              <p className="text-xs text-muted-foreground">
+              <div className="text-3xl font-bold">{courses.length}</div>
+              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
                 {courses.map((c: any) => c.course).join(", ") || "No courses assigned"}
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle className="text-sm font-medium">Upcoming Exams</CardTitle>
-                <CardDescription>Scheduled in the next 7 days</CardDescription>
+                <CardTitle className="text-sm font-semibold">Upcoming Exams</CardTitle>
+                <CardDescription className="text-xs">Scheduled in the next 7 days</CardDescription>
               </div>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Calendar className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{exams.length}</div>
-              <p className="text-xs text-muted-foreground">
+              <div className="text-3xl font-bold">{exams.length}</div>
+              <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
                 {exams.slice(0, 2).map((e: any) => e.name || "Untitled Exam").join(", ") || "No upcoming exams"}
               </p>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle className="text-sm font-medium">Question Bank</CardTitle>
-                <CardDescription>Questions you've created</CardDescription>
+                <CardTitle className="text-sm font-semibold">Question Bank</CardTitle>
+                <CardDescription className="text-xs">Questions you've created</CardDescription>
               </div>
-              <FileText className="h-4 w-4 text-muted-foreground" />
+              <FileText className="h-4 w-4 text-purple-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{questions.length}</div>
-              <p className="text-xs text-muted-foreground">
+              <div className="text-3xl font-bold">{questions.length}</div>
+              <p className="text-xs text-muted-foreground mt-2">
                 {questions.filter((q: any) => q.type === "forensic").length} forensic document questions
               </p>
             </CardContent>
@@ -438,47 +627,150 @@ const InstructorDashboard = () => {
           </Card>
         </div>
 
-        <div className="mt-8">
+        <div className="mt-8 space-y-6">
+          {/* Top Performers */}
           <Card>
             <CardHeader>
-              <CardTitle>Recent Exams</CardTitle>
-              <CardDescription>Quick access to your most recent exams</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Award className="h-5 w-5 text-yellow-500" />
+                Top Performers
+              </CardTitle>
+              <CardDescription className="text-xs mt-2">
+                Students with highest average exam scores across all your exams
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-sm border-b">
-                    <th className="pb-2">Exam Name</th>
-                    <th className="pb-2">Date</th>
-                    <th className="pb-2">Class</th>
-                    <th className="pb-2">Participants</th>
-                    <th className="pb-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentExams.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-4">No recent exams</td></tr>
-                  ) : recentExams.map((exam: any) => {
+              {getTopPerformers().length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-8">No student data available yet</div>
+              ) : (
+                <div className="space-y-2">
+                  {getTopPerformers().map((student, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-gradient-to-r from-yellow-50 to-transparent rounded-lg border border-yellow-200 hover:border-yellow-300 transition-colors">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-500 text-white font-bold text-sm flex-shrink-0">
+                          {idx + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-sm truncate">{student.name}</p>
+                          <p className="text-xs text-muted-foreground">{student.examsCompleted} exams completed</p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Table</p>
+                          <p className="text-lg font-bold text-blue-600">{student.tableAvg}%</p>
+                        </div>
+                        <div className="mt-1">
+                          <p className="text-xs text-muted-foreground">Findings</p>
+                          <p className="text-lg font-bold text-green-600">{student.findingsAvg}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Exam Performance Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-blue-500" />
+                Exam Performance Summary
+              </CardTitle>
+              <CardDescription className="text-xs mt-2">
+                Average scores, pass rates, and completion metrics for your 5 most recent exams
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {recentExams.slice(0, 5).length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-8">No recent exams</div>
+              ) : (
+                <div className="space-y-3">
+                  {recentExams.slice(0, 5).map((exam: any) => {
+                    const perf = getExamPerformance(exam.id);
                     return (
-                      <tr key={exam.id} className="border-b">
-                        <td className="py-3">{exam.name || "Untitled Exam"}</td>
-                        <td className="py-3">{exam.end ? `${formatDate(exam.start || exam.date)} - ${formatDate(exam.end)}` : formatDate(exam.start || exam.date)}</td>
-                        <td className="py-3">{exam.class_id || exam.class || "-"}</td>
-                        <td className="py-3">{exam.participants || 0}</td>
-                        <td className="py-3 text-right">
+                      <div key={exam.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-base truncate">{exam.name || "Untitled Exam"}</h4>
+                            <p className="text-xs text-muted-foreground">
+                              {exam.end ? `${formatDate(exam.start || exam.date)} - ${formatDate(exam.end)}` : formatDate(exam.start || exam.date)}
+                            </p>
+                          </div>
                           <button
                             type="button"
                             onClick={() => window.open(`${window.location.origin}/instructor/results?examId=${exam.id}`, '_blank')}
-                            className="text-primary hover:underline"
+                            className="text-xs px-3 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors whitespace-nowrap"
                           >
-                            View
+                            View Results
                           </button>
-                        </td>
-                      </tr>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          <div className="bg-blue-50 rounded p-2 border border-blue-200">
+                            <p className="text-xs text-muted-foreground font-semibold">Table Avg</p>
+                            <p className="text-xl font-bold text-blue-600">{perf.tableAvgScore}%</p>
+                          </div>
+                          <div className="bg-blue-50 rounded p-2 border border-blue-200">
+                            <p className="text-xs text-muted-foreground font-semibold">Table Pass</p>
+                            <p className="text-xl font-bold text-blue-600">{perf.tablePassRate}%</p>
+                          </div>
+                          <div className="bg-green-50 rounded p-2 border border-green-200">
+                            <p className="text-xs text-muted-foreground font-semibold">Findings Avg</p>
+                            <p className="text-xl font-bold text-green-600">{perf.findingsAvgScore}%</p>
+                          </div>
+                          <div className="bg-green-50 rounded p-2 border border-green-200">
+                            <p className="text-xs text-muted-foreground font-semibold">Findings Pass</p>
+                            <p className="text-xl font-bold text-green-600">{perf.findingsPassRate}%</p>
+                          </div>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-teal-500" />
+                Quick Actions
+              </CardTitle>
+              <CardDescription className="text-xs mt-2">
+                Manage your exams, questions, and results
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <Link
+                  to="/instructor/create-exam"
+                  className="flex flex-col items-center justify-center p-4 sm:p-6 border-2 border-dashed border-primary rounded-lg hover:bg-primary/5 transition-colors text-center"
+                >
+                  <Calendar className="h-7 w-7 sm:h-8 sm:w-8 text-primary mb-2" />
+                  <p className="font-semibold text-sm">Create Exam</p>
+                  <p className="text-xs text-muted-foreground mt-1">Set up a new exam</p>
+                </Link>
+                <Link
+                  to="/instructor/results"
+                  className="flex flex-col items-center justify-center p-4 sm:p-6 border-2 border-dashed border-blue-500 rounded-lg hover:bg-blue-500/5 transition-colors text-center"
+                >
+                  <TrendingUp className="h-7 w-7 sm:h-8 sm:w-8 text-blue-500 mb-2" />
+                  <p className="font-semibold text-sm">View Results</p>
+                  <p className="text-xs text-muted-foreground mt-1">Analyze performance</p>
+                </Link>
+                <Link
+                  to="/instructor/questions"
+                  className="flex flex-col items-center justify-center p-4 sm:p-6 border-2 border-dashed border-purple-500 rounded-lg hover:bg-purple-500/5 transition-colors text-center"
+                >
+                  <FileText className="h-7 w-7 sm:h-8 sm:w-8 text-purple-500 mb-2" />
+                  <p className="font-semibold text-sm">Question Bank</p>
+                  <p className="text-xs text-muted-foreground mt-1">Manage questions</p>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         </div>
