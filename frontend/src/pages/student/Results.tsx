@@ -676,15 +676,8 @@ const Results = () => {
     }
   };
 
-  const handleReload = async () => {
-    setIsReloading(true);
-    try {
-      await fetchStudentResults();
-    } catch (e) {
-      console.error('Reload error:', e);
-    } finally {
-      setIsReloading(false);
-    }
+  const handleReload = () => {
+    window.location.reload();
   };
 
   const handleRequeueAiGrade = async (studentId: number | string, examId: number | string) => {
