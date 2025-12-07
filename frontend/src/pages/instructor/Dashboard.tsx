@@ -36,6 +36,7 @@ const InstructorDashboard = () => {
   const [recentExams, setRecentExams] = useState([]);
   const [classes, setClasses] = useState([]);
   const [examResults, setExamResults] = useState<any>({});
+  const [aiScores, setAiScores] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(true);
   const [studentChartMode, setStudentChartMode] = useState<'class' | 'course'>('class');
   const [selectedCourseId, setSelectedCourseId] = useState<string>('all');
@@ -204,10 +205,58 @@ const InstructorDashboard = () => {
         }
       }
       setExamResults(results);
+      
+      // Fetch AI grades for all results
+      const allResults = Object.values(results).flat();
+      if (allResults.length > 0) {
+        try {
+          await fetchAiGradesForResults(allResults);
+        } catch (e) {
+          console.error('Error fetching AI grades:', e);
+        }
+      }
     };
 
     fetchResults();
   }, [recentExams]);
+
+  // Fetch AI grades for an array of results (skip ones already fetched)
+  const fetchAiGradesForResults = async (resultsArr: any[]) => {
+    if (!Array.isArray(resultsArr) || resultsArr.length === 0) return;
+    const token = localStorage.getItem('token');
+    const fetchPromises = resultsArr.map(async (r): Promise<[string, number | null] | null> => {
+      const sid = r.student_id ?? r.studentId ?? r.student;
+      const eid = r.exam_id ?? r.examId ?? r.exam_id;
+      if (!sid || !eid) return null;
+      const key = `${sid}_${eid}`;
+      // if already present in state, skip
+      if (aiScores[key] !== undefined) return null;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/ai-grader/result/${sid}/${eid}`, { 
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } 
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const score = data.score !== undefined ? Number(data.score) : NaN;
+        return [key, Number.isNaN(score) ? null : Math.round(score)];
+      } catch (e) {
+        return null;
+      }
+    });
+
+    const settled = await Promise.all(fetchPromises);
+    const resultMap: Record<string, number | null> = {};
+    settled.forEach((item) => {
+      if (item && Array.isArray(item) && typeof item[0] === 'string') {
+        const [k, v] = item as [string, number | null];
+        resultMap[k] = v;
+      }
+    });
+
+    if (Object.keys(resultMap).length > 0) {
+      setAiScores(prev => ({ ...prev, ...resultMap }));
+    }
+  };
 
   // Helper to extract student count robustly
   function getStudentCount(obj: any) {
@@ -224,6 +273,7 @@ const InstructorDashboard = () => {
   }
 
   // Calculate exam performance metrics (both table and findings scores)
+  // Uses exact same getFindingsPercent logic as ExamResults.tsx
   const getExamPerformance = (examId: number) => {
     const results = examResults[examId] || [];
     if (results.length === 0) {
@@ -233,6 +283,78 @@ const InstructorDashboard = () => {
         completionRate: 0, participants: 0 
       };
     }
+
+    // Helper: exact same logic as ExamResults.tsx getFindingsPercent
+    const getFindingsPercent = (res: any) => {
+      try {
+        // Check direct findings_score property first (highest priority)
+        if (res.findings_score !== undefined && res.findings_score !== null) {
+          const n = Number(res.findings_score);
+          if (!Number.isNaN(n)) return Math.round(n);
+        }
+        
+        // First, try to extract from details field (where we store explanationScore/explanationPoints)
+        if (res.details) {
+          try {
+            const detailsObj = typeof res.details === 'string' 
+              ? JSON.parse(res.details) 
+              : res.details;
+            
+            // Check if findings_score is in details
+            if (detailsObj.findings_score !== undefined && detailsObj.findings_score !== null) {
+              const n = Number(detailsObj.findings_score);
+              if (!Number.isNaN(n)) return Math.round(n);
+            }
+            
+            if (detailsObj.explanationScore !== undefined && 
+                detailsObj.explanationPoints !== undefined &&
+                detailsObj.explanationScore !== null &&
+                detailsObj.explanationPoints !== null &&
+                detailsObj.explanationScore !== '' &&
+                detailsObj.explanationPoints !== '') {
+              const expScore = parseInt(detailsObj.explanationScore, 10);
+              const expTotal = parseInt(detailsObj.explanationPoints, 10);
+              if (!isNaN(expScore) && !isNaN(expTotal) && expTotal > 0) {
+                return Math.round((expScore / expTotal) * 100);
+              }
+            }
+          } catch (detailsErr) {
+            // Fall through to other candidates
+          }
+        }
+        
+        const candidates = ['findings_score', 'findingsPercent', 'findings_percent', 'ai_score', 'ai_grade', 'ai_overall', 'overall', 'findings', 'ai', 'findingsPercent', 'findingsPercentage', 'findings_percentage', 'score_percent', 'scorePercentage'];
+        for (const k of candidates) {
+          if (res[k] !== undefined && res[k] !== null) {
+            const str = typeof res[k] === 'string' ? res[k].replace('%', '').trim() : res[k];
+            const n = Number(str);
+            if (!Number.isNaN(n)) return Math.round(n);
+          }
+        }
+        
+        const nestedCandidates = ['ai_result','aiResult','ai_grade','rubric','aiGrades','ai_scores'];
+        for (const k of nestedCandidates) {
+          if (res[k] && typeof res[k] === 'object') {
+            const obj = res[k];
+            for (const sub of ['overall','score','percent','percentage']) {
+              if (obj[sub] !== undefined && obj[sub] !== null) {
+                const val = Number(String(obj[sub]).replace('%','').trim());
+                if (!Number.isNaN(val)) return Math.round(val);
+              }
+            }
+          }
+        }
+        
+        if (res.ai && typeof res.ai === 'object') {
+          const overall = Number(res.ai.score ?? res.ai.overall ?? NaN);
+          if (!Number.isNaN(overall)) return Math.round(overall);
+        }
+        
+        return null;
+      } catch (e) {
+        return null;
+      }
+    };
 
     // Extract table scores
     const tableScores = results
@@ -264,29 +386,20 @@ const InstructorDashboard = () => {
       })
       .filter((s: number) => !isNaN(s) && s !== null && s !== undefined);
 
-    // Extract findings scores from details
+    // Extract findings scores using aiScores first (from API), then fallback to extraction from result
     const findingsScores = results
       .map((r: any) => {
-        if (r.details) {
-          try {
-            const detailsObj = typeof r.details === 'string' 
-              ? JSON.parse(r.details) 
-              : r.details;
-            
-            if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
-              const expScore = parseInt(detailsObj.explanationScore, 10);
-              const expTotal = parseInt(detailsObj.explanationPoints, 10);
-              if (expTotal > 0) {
-                return Math.round((expScore / expTotal) * 100);
-              }
-            }
-          } catch (e) {
-            // ignore
-          }
+        // Prefer aiScores from the API
+        const sid = r.student_id ?? r.studentId ?? r.student;
+        const eid = r.exam_id ?? r.examId ?? r.exam_id;
+        const key = `${sid}_${eid}`;
+        if (aiScores[key] !== undefined && aiScores[key] !== null) {
+          return aiScores[key];
         }
-        return 0;
+        // Fallback to extraction from result object
+        return getFindingsPercent(r);
       })
-      .filter((s: number) => !isNaN(s) && s !== null && s !== undefined);
+      .filter((s: number) => s !== null && s !== undefined);
 
     const tableAvgScore = tableScores.length > 0 ? Math.round(tableScores.reduce((a, b) => a + b, 0) / tableScores.length) : 0;
     const tablePassCount = tableScores.filter((s: number) => s >= 60).length;
@@ -308,6 +421,37 @@ const InstructorDashboard = () => {
 
   // Get top performing students across all exams (both scores combined)
   const getTopPerformers = () => {
+    // Helper function to extract findings percent (same as in getExamPerformance)
+    const getFindingsPercent = (res: any) => {
+      try {
+        if (res.details) {
+          try {
+            const detailsObj = typeof res.details === 'string' 
+              ? JSON.parse(res.details) 
+              : res.details;
+            
+            if (detailsObj.explanationScore !== undefined && 
+                detailsObj.explanationPoints !== undefined &&
+                detailsObj.explanationScore !== null &&
+                detailsObj.explanationPoints !== null &&
+                detailsObj.explanationScore !== '' &&
+                detailsObj.explanationPoints !== '') {
+              const expScore = parseInt(detailsObj.explanationScore, 10);
+              const expTotal = parseInt(detailsObj.explanationPoints, 10);
+              if (!isNaN(expScore) && !isNaN(expTotal) && expTotal > 0) {
+                return Math.round((expScore / expTotal) * 100);
+              }
+            }
+          } catch (detailsErr) {
+            // Fall through
+          }
+        }
+        return null;
+      } catch (e) {
+        return null;
+      }
+    };
+
     const studentScores: Record<string, { name: string; tableScores: number[]; findingsScores: number[]; examCount: number }> = {};
 
     Object.values(examResults).forEach((results: any[]) => {
@@ -336,24 +480,18 @@ const InstructorDashboard = () => {
         }
         tableScore = typeof tableScore === 'string' ? parseFloat(tableScore) : (typeof tableScore === 'number' ? tableScore : 0);
 
-        // Extract findings score
-        let findingsScore = 0;
-        if (result.details) {
-          try {
-            const detailsObj = typeof result.details === 'string' 
-              ? JSON.parse(result.details) 
-              : result.details;
-            
-            if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
-              const expScore = parseInt(detailsObj.explanationScore, 10);
-              const expTotal = parseInt(detailsObj.explanationPoints, 10);
-              if (expTotal > 0) {
-                findingsScore = Math.round((expScore / expTotal) * 100);
-              }
-            }
-          } catch (e) {
-            // ignore
+        // Extract findings score using aiScores first, then fallback to helper
+        let findingsScore = null;
+        const sid = result.student_id ?? result.studentId;
+        const eid = result.exam_id ?? result.examId;
+        if (sid && eid) {
+          const key = `${sid}_${eid}`;
+          if (aiScores[key] !== undefined && aiScores[key] !== null) {
+            findingsScore = aiScores[key];
           }
+        }
+        if (findingsScore === null) {
+          findingsScore = getFindingsPercent(result);
         }
 
         if (!studentScores[studentId]) {
@@ -362,7 +500,8 @@ const InstructorDashboard = () => {
         if (!isNaN(tableScore) && tableScore !== null && tableScore !== undefined) {
           studentScores[studentId].tableScores.push(tableScore);
         }
-        if (!isNaN(findingsScore) && findingsScore !== null && findingsScore !== undefined) {
+        // Only add findings score if it exists (not null)
+        if (findingsScore !== null && !isNaN(findingsScore) && findingsScore !== undefined) {
           studentScores[studentId].findingsScores.push(findingsScore);
         }
         studentScores[studentId].examCount += 1;
@@ -373,7 +512,7 @@ const InstructorDashboard = () => {
       .map(([, data]) => {
         const tableAvg = data.tableScores.length > 0 ? Math.round(data.tableScores.reduce((a, b) => a + b, 0) / data.tableScores.length) : 0;
         const findingsAvg = data.findingsScores.length > 0 ? Math.round(data.findingsScores.reduce((a, b) => a + b, 0) / data.findingsScores.length) : 0;
-        const combinedAvg = Math.round((tableAvg + findingsAvg) / 2);
+        const combinedAvg = data.findingsScores.length > 0 ? Math.round((tableAvg + findingsAvg) / 2) : tableAvg;
         return {
           name: data.name,
           tableAvg,

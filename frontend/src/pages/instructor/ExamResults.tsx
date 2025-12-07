@@ -537,6 +537,42 @@ const ExamResults = () => {
   // Helper: find findings/AI percent from result (multiple possible property names)
   const getFindingsPercent = (res: any) => {
     try {
+      // Check direct findings_score property first (highest priority)
+      if (res.findings_score !== undefined && res.findings_score !== null) {
+        const n = Number(res.findings_score);
+        if (!Number.isNaN(n)) return Math.round(n);
+      }
+      
+      // First, try to extract from details field (where we store explanationScore/explanationPoints)
+      if (res.details) {
+        try {
+          const detailsObj = typeof res.details === 'string' 
+            ? JSON.parse(res.details) 
+            : res.details;
+          
+          // Check if findings_score is in details
+          if (detailsObj.findings_score !== undefined && detailsObj.findings_score !== null) {
+            const n = Number(detailsObj.findings_score);
+            if (!Number.isNaN(n)) return Math.round(n);
+          }
+          
+          if (detailsObj.explanationScore !== undefined && 
+              detailsObj.explanationPoints !== undefined &&
+              detailsObj.explanationScore !== null &&
+              detailsObj.explanationPoints !== null &&
+              detailsObj.explanationScore !== '' &&
+              detailsObj.explanationPoints !== '') {
+            const expScore = parseInt(detailsObj.explanationScore, 10);
+            const expTotal = parseInt(detailsObj.explanationPoints, 10);
+            if (!isNaN(expScore) && !isNaN(expTotal) && expTotal > 0) {
+              return Math.round((expScore / expTotal) * 100);
+            }
+          }
+        } catch (detailsErr) {
+          // Fall through to other candidates
+        }
+      }
+      
       const candidates = ['findings_score', 'findingsPercent', 'findings_percent', 'ai_score', 'ai_grade', 'ai_overall', 'overall', 'findings', 'ai', 'findingsPercent', 'findingsPercentage', 'findings_percentage', 'score_percent', 'scorePercentage'];
       for (const k of candidates) {
         if (res[k] !== undefined && res[k] !== null) {
@@ -577,10 +613,11 @@ const ExamResults = () => {
     const findingsVals: number[] = [];
     ex.results.forEach((r: any, idx: number) => {
       const t = computeTablePercentForRes(r, ex);
-      // prefer aiMap (if provided) then aiScores map when available (key: studentId_examId)
-      const key = `${r.student_id ?? r.studentId ?? r.student}_${ex.id ?? ex.exam_id ?? ex.id}`;
-      const aiFromMap = aiMap && aiMap[key] !== undefined ? aiMap[key] : aiScores[key];
-      const f = aiFromMap !== undefined ? aiFromMap : getFindingsPercent(r);
+      // Prefer aiMap (from API fetch) over trying to extract from result object
+      const sid = r.student_id ?? r.studentId ?? r.student;
+      const eid = r.exam_id ?? r.examId ?? r.exam_id;
+      const key = `${sid}_${eid}`;
+      const f = aiMap && aiMap[key] !== undefined ? aiMap[key] : getFindingsPercent(r);
       if (t !== null && t !== undefined) tableVals.push(t);
       if (f !== null && f !== undefined) findingsVals.push(f);
     });
@@ -834,12 +871,12 @@ const ExamResults = () => {
             bVal = Number(b.participants || 0);
             break;
           case "avgTable":
-            aVal = (computeExamAverages(a).avgTable !== null ? computeExamAverages(a).avgTable : -1);
-            bVal = (computeExamAverages(b).avgTable !== null ? computeExamAverages(b).avgTable : -1);
+            aVal = (computeExamAverages(a, aiScores).avgTable !== null ? computeExamAverages(a, aiScores).avgTable : -1);
+            bVal = (computeExamAverages(b, aiScores).avgTable !== null ? computeExamAverages(b, aiScores).avgTable : -1);
             break;
           case "avgFindings":
-            aVal = (computeExamAverages(a).avgFindings !== null ? computeExamAverages(a).avgFindings : -1);
-            bVal = (computeExamAverages(b).avgFindings !== null ? computeExamAverages(b).avgFindings : -1);
+            aVal = (computeExamAverages(a, aiScores).avgFindings !== null ? computeExamAverages(a, aiScores).avgFindings : -1);
+            bVal = (computeExamAverages(b, aiScores).avgFindings !== null ? computeExamAverages(b, aiScores).avgFindings : -1);
             break;
           case "avgScore":
             aVal = a.avgScore !== undefined ? Number(a.avgScore) : -1;
@@ -1514,7 +1551,7 @@ const ExamResults = () => {
       // sort exams by date
       const sorted = exams.slice().sort((a,b) => (new Date(a.start || a.date || 0).getTime()) - (new Date(b.start || b.date || 0).getTime()));
       const data = sorted.map((ex: any) => {
-        const { avgTable, avgFindings } = computeExamAverages(ex);
+        const { avgTable, avgFindings } = computeExamAverages(ex, aiScores);
         return {
           label: formatDate(ex.start || ex.date) || String(ex.id),
           avgTable: avgTable !== null ? avgTable : null,
@@ -1547,7 +1584,7 @@ const ExamResults = () => {
       // sort exams by date
       const sorted = exams.slice().sort((a,b) => (new Date(a.start || a.date || 0).getTime()) - (new Date(b.start || b.date || 0).getTime()));
       const data = sorted.map((ex: any) => {
-        const { avgTable, avgFindings } = computeExamAverages(ex);
+        const { avgTable, avgFindings } = computeExamAverages(ex, aiScores);
         return {
           label: formatDate(ex.start || ex.date) || String(ex.id),
           avgTable: avgTable !== null ? avgTable : null,
@@ -1736,7 +1773,7 @@ const ExamResults = () => {
                 const rows = results.filter(r => selectedIds.includes(r.id));
                 const lines = rows.map(r => {
                   const participants = Array.isArray(r.results) && r.results.length > 0 ? (() => { const s = new Set(); r.results.forEach((res: any) => { const sid = res.student_id ?? res.studentId ?? res.student ?? `${res.first_name||''}_${res.last_name||''}`; if (sid !== undefined && sid !== null) s.add(String(sid)); }); return s.size; })() : (r.participants || 0);
-                  const { avgTable, avgFindings } = computeExamAverages(r);
+                  const { avgTable, avgFindings } = computeExamAverages(r, aiScores);
                   return [
                     r.name || r.examName || '',
                     getClassName(r) || r.class || r.class_id || '-',
@@ -1763,7 +1800,7 @@ const ExamResults = () => {
                 const rows = results.filter(r => selectedIds.includes(r.id));
                 const sheetRows = rows.map(r => {
                   const participants = Array.isArray(r.results) && r.results.length > 0 ? (() => { const s = new Set(); r.results.forEach((res: any) => { const sid = res.student_id ?? res.studentId ?? res.student ?? `${res.first_name||''}_${res.last_name||''}`; if (sid !== undefined && sid !== null) s.add(String(sid)); }); return s.size; })() : (r.participants || 0);
-                  const { avgTable, avgFindings } = computeExamAverages(r);
+                  const { avgTable, avgFindings } = computeExamAverages(r, aiScores);
                   return {
                     "Exam Name": r.name || r.examName || '',
                     "Class": getClassName(r) || r.class || r.class_id || '',
@@ -1813,7 +1850,7 @@ const ExamResults = () => {
                 doc.text("Exam List", 14, 16 + headerOffset);
                 const body = rows.map(r => {
                   const participants = Array.isArray(r.results) && r.results.length > 0 ? (() => { const s = new Set(); r.results.forEach((res: any) => { const sid = res.student_id ?? res.studentId ?? res.student ?? `${res.first_name||''}_${res.last_name||''}`; if (sid !== undefined && sid !== null) s.add(String(sid)); }); return s.size; })() : (r.participants || 0);
-                  const { avgTable, avgFindings } = computeExamAverages(r);
+                  const { avgTable, avgFindings } = computeExamAverages(r, aiScores);
                   return [
                     r.name || r.examName || '',
                     getClassName(r) || r.class || r.class_id || '-',
@@ -1944,7 +1981,7 @@ const ExamResults = () => {
                       {/* Avg Table Score */}
                       <TableCell className="hidden md:table-cell">{(() => {
                         try {
-                          const { avgTable } = computeExamAverages(exam);
+                          const { avgTable } = computeExamAverages(exam, aiScores);
                           const tableMax = getTableMaxPoints(exam);
                           const pts = pointsFromPercent(avgTable, tableMax);
                           if (avgTable !== null) return `${avgTable}%${pts !== null && tableMax !== null ? ` (${pts}/${tableMax})` : ''}`;
@@ -1956,7 +1993,7 @@ const ExamResults = () => {
                       {/* Avg Findings Score */}
                       <TableCell className="hidden lg:table-cell">{(() => {
                         try {
-                          const { avgFindings } = computeExamAverages(exam);
+                          const { avgFindings } = computeExamAverages(exam, aiScores);
                           const findingsMax = getFindingsMaxPoints(exam);
                           const pts = pointsFromPercent(avgFindings, findingsMax);
                           if (avgFindings !== null) return `${avgFindings}%${pts !== null && findingsMax !== null ? ` (${pts}/${findingsMax})` : ''}`;
