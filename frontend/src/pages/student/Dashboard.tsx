@@ -152,24 +152,17 @@ const StudentDashboard = () => {
 
   if (loading) return <div className="p-8">Loading...</div>;
 
-  // Derive display list for upcoming exams that excludes exams already taken
-  const takenSet = new Set<string>();
+  // Filter out exams that have been taken (in recentResults)
+  const takenExamIds = new Set<number>();
   (recentResults || []).forEach((r: any) => {
-    if (r.exam_id != null) takenSet.add(String(r.exam_id));
-    if (r.id != null) takenSet.add(String(r.id));
-    if (r.examName) takenSet.add(String(r.examName));
-    if (r.exam_name) takenSet.add(String(r.exam_name));
+    if (r.exam_id != null) {
+      takenExamIds.add(Number(r.exam_id));
+    }
   });
 
-  const visibleUpcoming = (upcomingExams || []).filter((ex: any) => {
-    const exId = ex.id ?? ex.exam_id ?? null;
-    const exName = ex.name ?? ex.examName ?? ex.title ?? null;
-    if (exId != null && takenSet.has(String(exId))) return false;
-    if (exName && takenSet.has(String(exName))) return false;
-    // Also try matching by numeric/string variants
-    const exIdStr = exId != null ? String(exId) : null;
-    if (exIdStr && takenSet.has(exIdStr)) return false;
-    return true;
+  const visibleUpcoming = (upcomingExams || []).filter((exam: any) => {
+    const examId = exam.id != null ? Number(exam.id) : null;
+    return examId != null && !takenExamIds.has(examId);
   });
 
   return (
@@ -260,177 +253,147 @@ const StudentDashboard = () => {
           </Card>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Overall Statistics</CardTitle>
-              <CardDescription>Your academic performance summary</CardDescription>
+              <CardTitle>Performance Summary</CardTitle>
+              <CardDescription>Your exam performance overview</CardDescription>
             </CardHeader>
-            <CardContent className="p-6 flex items-stretch">
-                {Array.isArray(recentResults) && recentResults.length > 0 ? (
-                  (() => {
-                    // Normalize results using same rules as Results.tsx processedResults
-                    const normalized = (recentResults || []).map((result: any) => {
-                      let raw_score = result.raw_score;
-                      let raw_total = result.raw_total;
-                      let totalPoints = result.totalPoints ?? result.total_points ?? result.total ?? 0;
-                      let earnedPoints = result.earnedPoints ?? result.earned_points ?? result.earned ?? 0;
-
-                      if (result.question_type === 'forensic' && result.answer && result.answer_key) {
-                        try {
-                          let parsedAnswer: any = [];
-                          let parsedKey: any = [];
-                          let columns: string[] = [];
-                          if (result.answer) {
-                            const rawAnswer = JSON.parse(result.answer);
-                            parsedAnswer = rawAnswer.tableAnswers || rawAnswer || [];
-                          }
-                          if (result.answer_key) {
-                            const rawKey = JSON.parse(result.answer_key);
-                            if (rawKey.specimens && Array.isArray(rawKey.specimens)) parsedKey = rawKey.specimens;
-                            else if (Array.isArray(rawKey)) parsedKey = rawKey;
-                            else parsedKey = [];
-                          }
-                          if (!Array.isArray(parsedKey)) parsedKey = [];
-                          columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter((k) => !['points','id','rowId'].includes(k)) : [];
-
-                          raw_total = parsedKey.length * columns.length;
-                          raw_score = 0;
-                          totalPoints = 0;
-                          earnedPoints = 0;
-
-                          parsedKey.forEach((row: any, rowIdx: number) => {
-                            const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-                            totalPoints += rowPoints;
-                            let allCorrectForRow = true;
-                            columns.forEach((col) => {
-                              const studentAns = (parsedAnswer[rowIdx]?.[col] ?? "").toString();
-                              const correctAns = (row[col] ?? "").toString();
-                              if (studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase()) {
-                                raw_score++;
-                              } else {
-                                allCorrectForRow = false;
-                              }
-                            });
-                            if (allCorrectForRow) earnedPoints += rowPoints;
-                          });
-                        } catch (e) {
-                          raw_score = raw_score ?? 0;
-                          raw_total = raw_total ?? 0;
-                        }
-                      }
-
-                      // compute final score percent using same fallbacks
-                      let score = result.score;
-                      if (totalPoints > 0) {
-                        score = Math.round((Number(earnedPoints) / Number(totalPoints)) * 100);
-                      } else if (raw_score !== undefined && raw_total !== undefined) {
-                        score = raw_total > 0 ? Math.round((Number(raw_score) / Number(raw_total)) * 100) : 0;
-                      } else {
-                        score = score !== undefined ? Number(score) : 0;
-                      }
-
-                      return {
-                        ...result,
-                        raw_score,
-                        raw_total,
-                        totalPoints,
-                        earnedPoints,
-                        score: Number.isNaN(Number(score)) ? 0 : Math.max(0, Math.min(100, Math.round(Number(score)))),
-                      };
-                    });
-
-                    const totalExams = normalized.length;
-
-                    const tableScores = normalized.map((r: any) => r.score).filter((s: number) => s > 0);
-
-                    const getFindingsMaxPoints = (result: any) => {
+            <CardContent>
+              {Array.isArray(recentResults) && recentResults.length > 0 ? (
+                (() => {
+                  // Calculate performance metrics for both table and findings scores
+                  const tableScores = recentResults.map((result: any) => {
+                    // Calculate percentage score using same logic as Results.tsx
+                    let raw_score = result.raw_score;
+                    let raw_total = result.raw_total;
+                    let tableScore = result.score;
+                    
+                    // Try to extract score data from details field
+                    if (result.details) {
                       try {
-                        if (!result) return 20;
-                        if (result.findings_points !== undefined && result.findings_points !== null) return Number(result.findings_points);
-                        if (result.findingsPoints !== undefined && result.findingsPoints !== null) return Number(result.findingsPoints);
-                        if (result.explanation_points !== undefined && result.explanation_points !== null) return Number(result.explanation_points);
-                        if (result.explanationPoints !== undefined && result.explanationPoints !== null) return Number(result.explanationPoints);
-                        return 20;
-                      } catch (e) {
-                        return 20;
-                      }
-                    };
-
-                    const extractFindings = (r: any) => {
-                      const sid = r.student_id ?? r.studentId ?? getTokenStudentId();
-                      const eid = r.exam_id ?? r.examId ?? r.id;
-                      const key = `${sid}_${eid}`;
-                      // Prefer AI grade fetched from aiScores map when available
-                      if (aiScores && Object.prototype.hasOwnProperty.call(aiScores, key)) {
-                        const v = aiScores[key];
-                        if (v === null || v === undefined) return 0;
-                        const num = Number(v);
-                        if (!Number.isNaN(num)) return Math.max(0, Math.min(100, Math.round(num)));
-                        return 0;
-                      }
-
-                      const maxPts = getFindingsMaxPoints(r) || 20;
-                      const candidates = [r.findings_score, r.ai_score, r.overall, r.ai_overall, r.findingsScore, r.findingsPoints];
-                      for (const c of candidates) {
-                        if (c === undefined || c === null) continue;
-                        const num = Number(c);
-                        if (Number.isNaN(num)) continue;
-                        // If the value looks like points (less than or equal to maxPts), convert to percent
-                        if (maxPts > 0 && num <= maxPts) {
-                          return Math.max(0, Math.min(100, Math.round((num / maxPts) * 100)));
+                        const detailsObj = typeof result.details === 'string' 
+                          ? JSON.parse(result.details) 
+                          : result.details;
+                        
+                        // Extract scoring information from details
+                        if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+                          raw_score = parseInt(detailsObj.totalScore, 10);
+                          raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
                         }
-                        // Otherwise treat as percent
-                        if (num >= 0 && num <= 100) return Math.max(0, Math.min(100, Math.round(num)));
+                      } catch (e) {
+                        // ignore
                       }
-                      return 0;
-                    };
+                    }
+                    
+                    // Calculate percentage score
+                    if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
+                      tableScore = Math.round((raw_score / raw_total) * 100);
+                    }
+                    
+                    return tableScore;
+                  });
 
-                    const findingsScores = normalized.map(extractFindings).filter((s: number) => s > 0);
+                  // Calculate findings scores
+                  const findingsScores = recentResults.map((result: any) => {
+                    const sid = result.student_id ?? result.studentId ?? getTokenStudentId();
+                    const eid = result.exam_id ?? result.examId ?? result.id;
+                    const key = `${sid}_${eid}`;
+                    
+                    let findingsScore = 0;
+                    if (aiScores && Object.prototype.hasOwnProperty.call(aiScores, key)) {
+                      const v = aiScores[key];
+                      if (v !== null && v !== undefined) {
+                        const num = Number(v);
+                        if (!Number.isNaN(num)) findingsScore = Math.max(0, Math.min(100, Math.round(num)));
+                      }
+                    }
+                    
+                    return findingsScore;
+                  });
 
-                    const avgTableScore = tableScores.length > 0 ? Math.round(tableScores.reduce((a: number, b: number) => a + b, 0) / tableScores.length) : 0;
-                    const avgFindingsScore = findingsScores.length > 0 ? Math.round(findingsScores.reduce((a: number, b: number) => a + b, 0) / findingsScores.length) : 0;
-                    const passRate = tableScores.length > 0 ? Math.round((tableScores.filter((s: number) => s >= 60).length / tableScores.length) * 100) : 0;
+                  // Table score metrics
+                  const tableBestScore = Math.max(...tableScores);
+                  const tableLowestScore = Math.min(...tableScores);
+                  const tableAvgScore = Math.round(tableScores.reduce((a: number, b: number) => a + b, 0) / tableScores.length);
+                  const tableFirstScore = tableScores[0];
+                  const tableLatestScore = tableScores[tableScores.length - 1];
+                  const tableImprovementTrend = tableLatestScore - tableFirstScore;
+                  const tableImprovementPercent = tableFirstScore > 0 ? Math.round((tableImprovementTrend / tableFirstScore) * 100) : 0;
 
-                    return (
-                      <div className="flex flex-col w-full h-full justify-between">
-                        <div className="grid grid-cols-2 gap-6 items-center">
-                        <div className="text-center py-3">
-                          <p className="text-4xl font-extrabold text-blue-600">{avgTableScore}%</p>
-                          <p className="text-sm text-muted-foreground mt-2">Table Avg</p>
-                        </div>
-                        <div className="text-center py-3">
-                          <p className="text-4xl font-extrabold text-green-600">{avgFindingsScore}%</p>
-                          <p className="text-sm text-muted-foreground mt-2">Findings Avg</p>
+                  // Findings score metrics
+                  const findingsBestScore = Math.max(...findingsScores);
+                  const findingsLowestScore = Math.min(...findingsScores);
+                  const findingsAvgScore = Math.round(findingsScores.reduce((a: number, b: number) => a + b, 0) / findingsScores.length);
+                  const findingsFirstScore = findingsScores[0];
+                  const findingsLatestScore = findingsScores[findingsScores.length - 1];
+                  const findingsImprovementTrend = findingsLatestScore - findingsFirstScore;
+                  const findingsImprovementPercent = findingsFirstScore > 0 ? Math.round((findingsImprovementTrend / findingsFirstScore) * 100) : 0;
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Table Score Metrics */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-blue-600 mb-2">Table Score</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="border rounded p-2 bg-blue-50">
+                            <p className="text-xs text-muted-foreground">Best</p>
+                            <p className="text-xl font-bold text-blue-600">{tableBestScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-red-50">
+                            <p className="text-xs text-muted-foreground">Lowest</p>
+                            <p className="text-xl font-bold text-red-600">{tableLowestScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-purple-50">
+                            <p className="text-xs text-muted-foreground">Avg</p>
+                            <p className="text-xl font-bold text-purple-600">{tableAvgScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-green-50">
+                            <p className="text-xs text-muted-foreground">Trend</p>
+                            <p className="text-lg font-bold text-green-600">{tableImprovementTrend >= 0 ? '↑' : '↓'} {Math.abs(tableImprovementPercent)}%</p>
+                          </div>
                         </div>
                       </div>
-                        <div className="grid grid-cols-2 gap-6 border-t pt-4 mt-4">
-                        <div className="text-center py-3">
-                          <p className="text-2xl font-bold text-primary">{totalExams}</p>
-                          <p className="text-sm text-muted-foreground mt-1">Exams Taken</p>
+
+                      {/* Findings Score Metrics */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-green-600 mb-2">Findings Score</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                          <div className="border rounded p-2 bg-green-50">
+                            <p className="text-xs text-muted-foreground">Best</p>
+                            <p className="text-xl font-bold text-green-600">{findingsBestScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-red-50">
+                            <p className="text-xs text-muted-foreground">Lowest</p>
+                            <p className="text-xl font-bold text-red-600">{findingsLowestScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-yellow-50">
+                            <p className="text-xs text-muted-foreground">Avg</p>
+                            <p className="text-xl font-bold text-yellow-600">{findingsAvgScore}%</p>
+                          </div>
+                          <div className="border rounded p-2 bg-blue-50">
+                            <p className="text-xs text-muted-foreground">Trend</p>
+                            <p className="text-lg font-bold text-blue-600">{findingsImprovementTrend >= 0 ? '↑' : '↓'} {Math.abs(findingsImprovementPercent)}%</p>
+                          </div>
                         </div>
-                        <div className="text-center py-3">
-                          <p className="text-2xl font-bold text-primary">{passRate}%</p>
-                          <p className="text-sm text-muted-foreground mt-1">Pass Rate</p>
-                        </div>
                       </div>
-                      <div className="pt-3 text-sm text-muted-foreground">
-                        <p className="mb-1 font-medium">Pass Rate</p>
-                        <p className="text-xs">% of recent exams with table score ≥ 60% (computed like Results).</p>
+
+                      <div className="text-xs text-muted-foreground pt-2 border-t space-y-1">
+                        <p className="font-medium">Trend: % change from first exam to most recent exam</p>
+                        <p className="text-xs">Based on {recentResults.length} exam{recentResults.length !== 1 ? 's' : ''}</p>
                       </div>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div className="flex items-center justify-center w-full py-12 text-center text-muted-foreground">
-                    No exam results yet
-                  </div>
-                )}
-              </CardContent>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="flex items-center justify-center py-12 text-center text-muted-foreground">
+                  No exam results yet
+                </div>
+              )}
+            </CardContent>
           </Card>
 
-          {/* Score Trend Chart */}
-          <Card className="md:col-span-2">
+          <Card>
             <CardHeader>
               <CardTitle>Score Trend</CardTitle>
               <CardDescription>Performance over time</CardDescription>
@@ -438,124 +401,60 @@ const StudentDashboard = () => {
             <CardContent>
               {Array.isArray(recentResults) && recentResults.length > 0 ? (
                 (() => {
-                  // Prepare chart data with table and findings scores
-                  // Normalize results for chart (same rules as statistics)
-                  const normalizedForChart = (recentResults || []).map((result: any) => {
-                    let raw_score = result.raw_score;
-                    let raw_total = result.raw_total;
-                    let totalPoints = result.totalPoints ?? result.total_points ?? result.total ?? 0;
-                    let earnedPoints = result.earnedPoints ?? result.earned_points ?? result.earned ?? 0;
-
-                    if (result.question_type === 'forensic' && result.answer && result.answer_key) {
-                      try {
-                        let parsedAnswer: any = [];
-                        let parsedKey: any = [];
-                        let columns: string[] = [];
-                        if (result.answer) {
-                          const rawAnswer = JSON.parse(result.answer);
-                          parsedAnswer = rawAnswer.tableAnswers || rawAnswer || [];
-                        }
-                        if (result.answer_key) {
-                          const rawKey = JSON.parse(result.answer_key);
-                          if (rawKey.specimens && Array.isArray(rawKey.specimens)) parsedKey = rawKey.specimens;
-                          else if (Array.isArray(rawKey)) parsedKey = rawKey;
-                          else parsedKey = [];
-                        }
-                        if (!Array.isArray(parsedKey)) parsedKey = [];
-                        columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter((k) => !['points','id','rowId'].includes(k)) : [];
-
-                        raw_total = parsedKey.length * columns.length;
-                        raw_score = 0;
-                        totalPoints = 0;
-                        earnedPoints = 0;
-
-                        parsedKey.forEach((row: any, rowIdx: number) => {
-                          const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-                          totalPoints += rowPoints;
-                          let allCorrectForRow = true;
-                          columns.forEach((col) => {
-                            const studentAns = (parsedAnswer[rowIdx]?.[col] ?? "").toString();
-                            const correctAns = (row[col] ?? "").toString();
-                            if (studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase()) {
-                              raw_score++;
-                            } else {
-                              allCorrectForRow = false;
-                            }
-                          });
-                          if (allCorrectForRow) earnedPoints += rowPoints;
-                        });
-                      } catch (e) {
-                        raw_score = raw_score ?? 0;
-                        raw_total = raw_total ?? 0;
-                      }
-                    }
-
-                    let score = result.score;
-                    if (totalPoints > 0) {
-                      score = Math.round((Number(earnedPoints) / Number(totalPoints)) * 100);
-                    } else if (raw_score !== undefined && raw_total !== undefined) {
-                      score = raw_total > 0 ? Math.round((Number(raw_score) / Number(raw_total)) * 100) : 0;
-                    } else {
-                      score = score !== undefined ? Number(score) : 0;
-                    }
-
-                    const normalizedScore = Number.isNaN(Number(score)) ? 0 : Math.max(0, Math.min(100, Math.round(Number(score))));
-
-                    const getFindingsMaxPoints = (result: any) => {
-                      try {
-                        if (!result) return 20;
-                        if (result.findings_points !== undefined && result.findings_points !== null) return Number(result.findings_points);
-                        if (result.findingsPoints !== undefined && result.findingsPoints !== null) return Number(result.findingsPoints);
-                        if (result.explanation_points !== undefined && result.explanation_points !== null) return Number(result.explanation_points);
-                        if (result.explanationPoints !== undefined && result.explanationPoints !== null) return Number(result.explanationPoints);
-                        return 20;
-                      } catch (e) {
-                        return 20;
-                      }
-                    };
-
-                    const extractFindings = (r: any) => {
-                      const sid = r.student_id ?? r.studentId ?? getTokenStudentId();
-                      const eid = r.exam_id ?? r.examId ?? r.id;
-                      const key = `${sid}_${eid}`;
-                      // Prefer AI grade fetched from aiScores map when available
-                      if (aiScores && Object.prototype.hasOwnProperty.call(aiScores, key)) {
-                        const v = aiScores[key];
-                        if (v === null || v === undefined) return 0;
-                        const num = Number(v);
-                        if (!Number.isNaN(num)) return Math.max(0, Math.min(100, Math.round(num)));
-                        return 0;
-                      }
-
-                      const maxPts = getFindingsMaxPoints(r) || 20;
-                      const candidates = [r.findings_score, r.ai_score, r.overall, r.ai_overall, r.findingsScore, r.findingsPoints];
-                      for (const c of candidates) {
-                        if (c === undefined || c === null) continue;
-                        const num = Number(c);
-                        if (Number.isNaN(num)) continue;
-                        if (maxPts > 0 && num <= maxPts) {
-                          return Math.max(0, Math.min(100, Math.round((num / maxPts) * 100)));
-                        }
-                        if (num >= 0 && num <= 100) return Math.max(0, Math.min(100, Math.round(num)));
-                      }
-                      return 0;
-                    };
-
-                    return {
-                      ...result,
-                      score: normalizedScore,
-                      findings: extractFindings(result),
-                    };
-                  });
-
-                  const chartData = normalizedForChart
+                  const chartData = (recentResults || [])
                     .slice()
                     .reverse()
-                    .map((r: any, idx: number) => ({
-                      exam: `Exam ${idx + 1}`,
-                      table: r.score || 0,
-                      findings: r.findings || 0,
-                    }));
+                    .map((result: any) => {
+                      // Calculate percentage score using same logic as Results.tsx
+                      let raw_score = result.raw_score;
+                      let raw_total = result.raw_total;
+                      let tableScore = result.score;
+                      
+                      // Try to extract score data from details field (same as Results.tsx)
+                      if (result.details) {
+                        try {
+                          const detailsObj = typeof result.details === 'string' 
+                            ? JSON.parse(result.details) 
+                            : result.details;
+                          
+                          // Extract scoring information from details
+                          if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+                            raw_score = parseInt(detailsObj.totalScore, 10);
+                            raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
+                          }
+                        } catch (e) {
+                          // ignore
+                        }
+                      }
+                      
+                      // Calculate percentage score
+                      if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
+                        tableScore = Math.round((raw_score / raw_total) * 100);
+                      }
+                      
+                      // Get findings score
+                      const sid = result.student_id ?? result.studentId ?? getTokenStudentId();
+                      const eid = result.exam_id ?? result.examId ?? result.id;
+                      const key = `${sid}_${eid}`;
+                      
+                      let findingsScore = 0;
+                      if (aiScores && Object.prototype.hasOwnProperty.call(aiScores, key)) {
+                        const v = aiScores[key];
+                        if (v !== null && v !== undefined) {
+                          const num = Number(v);
+                          if (!Number.isNaN(num)) findingsScore = Math.max(0, Math.min(100, Math.round(num)));
+                        }
+                      }
+                      
+                      // Get exam name (same logic as Results.tsx)
+                      const examName = result.examName || result.exam_name || result.name || `Exam ${result.exam_id || result.id}`;
+                      
+                      return {
+                        exam: examName,
+                        table: tableScore,
+                        findings: findingsScore,
+                      };
+                    });
 
                   return (
                     <ChartContainer config={{ table: { label: 'Table Score', color: '#3b82f6' }, findings: { label: 'Findings Score', color: '#10b981' } }}>
