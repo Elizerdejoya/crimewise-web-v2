@@ -8,9 +8,18 @@ const comparator = require('../findingsComparator');
 router.post('/submit', async (req, res) => {
 
   try {
+    console.log('[AI-GRADER][SUBMIT] ========== REQUEST RECEIVED ==========');
+    console.log('[AI-GRADER][SUBMIT] Body:', JSON.stringify(req.body).substring(0, 200));
+    
     const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
     
+    console.log('[AI-GRADER][SUBMIT] studentId:', studentId, 'type:', typeof studentId);
+    console.log('[AI-GRADER][SUBMIT] examId:', examId, 'type:', typeof examId);
+    console.log('[AI-GRADER][SUBMIT] studentFindings length:', (studentFindings || '').length);
+    console.log('[AI-GRADER][SUBMIT] teacherFindings:', String(reqTeacherFindings || '').substring(0, 100));
+    
     if (!studentId || !examId || !studentFindings) {
+      console.error('[AI-GRADER][SUBMIT] Validation failed - missing required fields');
       return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
     }
 

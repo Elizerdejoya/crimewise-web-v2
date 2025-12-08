@@ -47,7 +47,8 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
         completeness: 0,
         clarity: 0,
         objectivity: 0,
-        feedback: 'No findings submitted. Please provide your analysis.'
+        feedback: 'No findings submitted. Please provide your analysis.',
+        raw_response: 'LOCAL_COMPARISON'
       };
     } else {
       // Normalize for comparison
@@ -70,7 +71,8 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
           completeness: 100,
           clarity: 100,
           objectivity: 100,
-          feedback: 'Perfect! Your findings exactly match the teacher\'s answer. Excellent work!'
+          feedback: 'Perfect! Your findings exactly match the teacher\'s answer. Excellent work!',
+          raw_response: 'LOCAL_COMPARISON'
         };
       } else {
         // Calculate similarity using Levenshtein distance
@@ -111,12 +113,24 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
     // Save to database (ALL paths save now)
     try {
       console.log('[COMPARATOR] Saving grade to database - Student:', studentId, '| Exam:', examId, '| Score:', result.score);
+      console.log('[COMPARATOR] Result object:', { 
+        student_id: studentId, 
+        exam_id: examId, 
+        score: result.score, 
+        accuracy: result.accuracy, 
+        completeness: result.completeness, 
+        clarity: result.clarity, 
+        objectivity: result.objectivity, 
+        feedback_len: result.feedback.length,
+        raw_response: result.raw_response 
+      });
+      
       const insertResult = await db.sql`
         INSERT INTO ai_grades 
         (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) 
-        VALUES (${studentId}, ${examId}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${'LOCAL_COMPARISON'})
+        VALUES (${studentId}, ${examId}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${result.raw_response})
       `;
-      console.log('[COMPARATOR] Grade saved successfully for student', studentId, '| Result:', insertResult);
+      console.log('[COMPARATOR] Grade saved successfully for student', studentId, '| Insert returned:', insertResult);
     } catch (dbErr) {
       console.error('[COMPARATOR] *** CRITICAL: Failed to save grade ***');
       console.error('[COMPARATOR] Error message:', dbErr && dbErr.message);
