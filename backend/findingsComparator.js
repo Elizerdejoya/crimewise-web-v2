@@ -23,6 +23,15 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
   console.log('[COMPARATOR] Teacher findings length:', String(teacherFindings).length, 'chars');
   console.log('[COMPARATOR] Student findings length:', String(studentFindings).length, 'chars');
 
+  // Wait for DB to be initialized
+  try {
+    await db.initialized;
+    console.log('[COMPARATOR] DB initialized, proceeding with comparison');
+  } catch (initErr) {
+    console.error('[COMPARATOR] DB initialization timeout or error:', initErr && initErr.message);
+    // Continue anyway - will fail with better error at insert time
+  }
+
   try {
     const teacher = String(teacherFindings || '').trim();
     const student = String(studentFindings || '').trim();
