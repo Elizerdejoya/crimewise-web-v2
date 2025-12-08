@@ -300,7 +300,7 @@ router.post("/api/login", async (req, res) => {
     const token = await new SignJWT(jwtPayload)
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("1h")
+      .setExpirationTime("7d")
       .sign(secret);
 
     console.log(

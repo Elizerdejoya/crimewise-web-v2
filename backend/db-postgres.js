@@ -36,10 +36,9 @@ const db = new Database(pool);
 async function initializeSchema() {
   const client = await pool.connect();
   try {
-    console.log('Checking PostgreSQL schema...');
+    console.log('[DB] Checking PostgreSQL schema...');
 
-    // Check if ai_queue table exists - if it does, schema is ready
-    // (tables were created by migrate-to-postgres.js script)
+    // Check if ai_queue table exists
     const checkTable = await client.query(`
       SELECT EXISTS(
         SELECT 1 FROM information_schema.tables 
@@ -48,14 +47,60 @@ async function initializeSchema() {
     `);
     
     if (checkTable.rows[0].exists) {
-      console.log('✓ PostgreSQL schema verified (ai_queue table exists)');
+      console.log('[DB] ✓ PostgreSQL schema verified (ai_queue table exists)');
       return true;
     }
 
-    console.log('⚠ PostgreSQL schema incomplete - run: node migrate-to-postgres.js');
+    // Tables don't exist, create them
+    console.log('[DB] Creating PostgreSQL AI grading tables...');
+    
+    // Create ai_grades table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_grades (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        exam_id INTEGER NOT NULL,
+        score INTEGER NOT NULL,
+        accuracy INTEGER DEFAULT 0,
+        completeness INTEGER DEFAULT 0,
+        clarity INTEGER DEFAULT 0,
+        objectivity INTEGER DEFAULT 0,
+        feedback TEXT,
+        raw_response TEXT,
+        api_key_index INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+    console.log('[DB] Created ai_grades table');
+
+    // Create ai_queue table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_queue (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        exam_id INTEGER NOT NULL,
+        teacher_findings TEXT,
+        student_findings TEXT,
+        status TEXT DEFAULT 'pending',
+        attempts INTEGER DEFAULT 0,
+        last_error TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+    console.log('[DB] Created ai_queue table');
+    
+    // Create indexes for faster queries
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_grades_student_exam ON ai_grades(student_id, exam_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_queue_status ON ai_queue(status)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_queue_student_exam ON ai_queue(student_id, exam_id)`);
+    console.log('[DB] ✓ AI grading tables created successfully');
+    
     return true;
   } catch (err) {
-    console.error('[DB] Schema check error:', err.message);
+    console.error('[DB] Schema initialization error:', err.message);
     // Don't throw - allow app to start even if schema check fails
     return true;
   } finally {
