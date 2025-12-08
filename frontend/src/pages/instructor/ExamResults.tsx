@@ -458,20 +458,38 @@ const ExamResults = () => {
       if (ex.question_type === 'forensic' && ex.answer_key) {
         const parsedAnswer = (() => { try { return JSON.parse(res.answer || '[]'); } catch { return []; } })();
         const parsedKey = (() => { try { return JSON.parse(ex.answer_key || '[]'); } catch { return []; } })();
-        const columns = Array.isArray(parsedKey) && parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter(k => k !== 'points' && k !== 'id' && k !== 'rowId') : [];
+        const columns = Array.isArray(parsedKey) && parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter(k => !['points', 'pointType', 'id', 'rowId'].includes(k)) : [];
         let totalPoints = 0;
         let earnedPoints = 0;
         if (Array.isArray(parsedKey)) {
           parsedKey.forEach((row: any, rowIdx: number) => {
             const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-            totalPoints += rowPoints;
+            const pointType = row.pointType || "both"; // Default to "both" for backward compatibility
+            
+            let possiblePoints = rowPoints;
+            if (pointType === "each") {
+              possiblePoints = rowPoints * columns.length;
+            }
+            totalPoints += possiblePoints;
+            
             let allCorrect = true;
+            let correctColumnCount = 0;
+            
             columns.forEach((col) => {
               const studentAns = (parsedAnswer[rowIdx]?.[col] || '').toString().trim().toLowerCase();
               const correctAns = (row[col] || '').toString().trim().toLowerCase();
-              if (studentAns !== correctAns) allCorrect = false;
+              if (studentAns === correctAns) {
+                correctColumnCount++;
+              } else {
+                allCorrect = false;
+              }
             });
-            if (allCorrect) earnedPoints += rowPoints;
+            
+            if (pointType === "both") {
+              if (allCorrect) earnedPoints += rowPoints;
+            } else if (pointType === "each") {
+              earnedPoints += correctColumnCount * rowPoints;
+            }
           });
         }
         return totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : null;
@@ -723,7 +741,7 @@ const ExamResults = () => {
           else parsedKey = [];
         }
         if (!Array.isArray(parsedKey)) parsedKey = [];
-        columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter((k) => !['points','id','rowId'].includes(k)) : [];
+        columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter((k) => !['points','pointType','id','rowId'].includes(k)) : [];
       } catch (e) {
         parsedAnswer = [];
         parsedKey = [];
@@ -738,18 +756,32 @@ const ExamResults = () => {
       if (Array.isArray(parsedKey)) {
         parsedKey.forEach((row: any, rowIdx: number) => {
           const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-          totalPoints += rowPoints;
+          const pointType = row.pointType || "both"; // Default to "both" for backward compatibility
+          
+          let possiblePoints = rowPoints;
+          if (pointType === "each") {
+            possiblePoints = rowPoints * columns.length;
+          }
+          totalPoints += possiblePoints;
+          
           let allCorrectForRow = true;
+          let correctColumnCount = 0;
           columns.forEach((col) => {
             const studentAns = safeString(parsedAnswer[rowIdx]?.[col]);
             const correctAns = safeString(row[col]);
             if (studentAns.trim().toLowerCase() === correctAns.trim().toLowerCase()) {
               raw_score++;
+              correctColumnCount++;
             } else {
               allCorrectForRow = false;
             }
           });
-          if (allCorrectForRow) earnedPoints += rowPoints;
+          
+          if (pointType === "both") {
+            if (allCorrectForRow) earnedPoints += rowPoints;
+          } else if (pointType === "each") {
+            earnedPoints += correctColumnCount * rowPoints;
+          }
         });
       }
     }
@@ -1163,7 +1195,7 @@ const ExamResults = () => {
           try {
             parsedAnswer = JSON.parse(res.answer || "[]");
             parsedKey = JSON.parse(exam.answer_key || "[]");
-            columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter(k => k !== 'points') : [];
+            columns = parsedKey.length > 0 ? Object.keys(parsedKey[0]).filter(k => !['points', 'pointType'].includes(k)) : [];
           } catch { parsedAnswer = []; parsedKey = []; columns = []; }
 
           const raw_total = parsedKey.length * columns.length;
@@ -1174,23 +1206,35 @@ const ExamResults = () => {
           parsedKey.forEach((row: any, rowIdx: number) => {
             // Get row points if available
             const rowPoints = row.points !== undefined ? Number(row.points) : 1;
-            totalPoints += rowPoints;
+            const pointType = row.pointType || "both"; // Default to "both" for backward compatibility
+            
+            let possiblePoints = rowPoints;
+            if (pointType === "each") {
+              possiblePoints = rowPoints * columns.length;
+            }
+            totalPoints += possiblePoints;
 
             // Check each column for correctness
             let allCorrectForRow = true;
+            let correctColumnCount = 0;
             columns.forEach((col: string) => {
               const studentAns = (parsedAnswer[rowIdx]?.[col] || "").toString().trim().toLowerCase();
               const correctAns = (row[col] || "").toString().trim().toLowerCase();
               if (studentAns === correctAns) {
                 raw_score++;
+                correctColumnCount++;
               } else {
                 allCorrectForRow = false;
               }
             });
 
-            // Award points if all answers in the row are correct
-            if (allCorrectForRow) {
-              earnedPoints += rowPoints;
+            // Award points based on point type
+            if (pointType === "both") {
+              if (allCorrectForRow) {
+                earnedPoints += rowPoints;
+              }
+            } else if (pointType === "each") {
+              earnedPoints += correctColumnCount * rowPoints;
             }
           });
 
@@ -1441,8 +1485,8 @@ const ExamResults = () => {
         printWindow.document.write(`
           <tr>
             <td>${studentLabel(res, idx)}</td>
-            <td>${tablePercent !== null ? (tablePercent + '%' + (tablePts !== null && tableMaxForPrint !== null ? ` (${tablePts}/${tableMaxForPrint})` : '')) : '-'}</td>
-            <td>${findingsPercent !== null ? (findingsPercent + '%' + (findingsPts !== null && findingsMaxForPrint !== null ? ` (${findingsPts}/${findingsMaxForPrint})` : '')) : '-'}</td>
+            <td>${tablePercent !== null ? (tablePercent + '%' + (tablePts !== null && tableMaxForPrint !== null ? ` (${tablePts}/${tableMaxForPrint} pts)` : '')) : '-'}</td>
+            <td>${findingsPercent !== null ? (findingsPercent + '%' + (findingsPts !== null && findingsMaxForPrint !== null ? ` (${findingsPts}/${findingsMaxForPrint} pts)` : '')) : '-'}</td>
             <td>${formatDate(res.date)}</td>
             <td>${res.tab_switches !== undefined ? res.tab_switches : '-'}</td>
           </tr>
@@ -1477,7 +1521,8 @@ const ExamResults = () => {
 
         // Determine if we have points per row
         const hasPointsPerRow = 'points' in parsedKey[0];
-        const columns = Object.keys(parsedKey[0]).filter(k => k !== 'points');
+        const hasPointType = 'pointType' in parsedKey[0];
+        const columns = Object.keys(parsedKey[0]).filter(k => !['points', 'pointType'].includes(k));
 
         printWindow.document.write(`
           <table>
@@ -1486,6 +1531,7 @@ const ExamResults = () => {
                 <th>Row #</th>
                 ${columns.map(col => `<th>${col.replace(/([A-Z])/g, ' $1')}</th>`).join('')}
                 ${hasPointsPerRow ? '<th>Points Value</th>' : ''}
+                ${hasPointType ? '<th>Point Type</th>' : ''}
               </tr>
             </thead>
             <tbody>
@@ -1497,6 +1543,7 @@ const ExamResults = () => {
               <td>${idx + 1}</td>
               ${columns.map(col => `<td>${row[col] || ''}</td>`).join('')}
               ${hasPointsPerRow ? `<td>${row.points || 1}</td>` : ''}
+              ${hasPointType ? `<td>${row.pointType === 'each' ? 'for each correct' : 'if both correct'}</td>` : ''}
             </tr>
           `);
         });
@@ -1620,7 +1667,7 @@ const ExamResults = () => {
         }
         if (!Array.isArray(parsedKey) || parsedKey.length === 0) return;
 
-        const columns = Object.keys(parsedKey[0] || {}).filter((k) => !['points','id','rowId'].includes(k));
+        const columns = Object.keys(parsedKey[0] || {}).filter((k) => !['points','pointType','id','rowId'].includes(k));
 
         // prepare tally structure per cell
         const cellTally: Record<string, { correct: string; counts: Record<string, number> }> = {};
@@ -1984,7 +2031,7 @@ const ExamResults = () => {
                           const { avgTable } = computeExamAverages(exam, aiScores);
                           const tableMax = getTableMaxPoints(exam);
                           const pts = pointsFromPercent(avgTable, tableMax);
-                          if (avgTable !== null) return `${avgTable}%${pts !== null && tableMax !== null ? ` (${pts}/${tableMax})` : ''}`;
+                          if (avgTable !== null) return `${avgTable}%${pts !== null && tableMax !== null ? ` (${pts}/${tableMax} pts)` : ''}`;
                           return '-';
                         } catch (e) {
                           return '-';
@@ -1996,7 +2043,7 @@ const ExamResults = () => {
                           const { avgFindings } = computeExamAverages(exam, aiScores);
                           const findingsMax = getFindingsMaxPoints(exam);
                           const pts = pointsFromPercent(avgFindings, findingsMax);
-                          if (avgFindings !== null) return `${avgFindings}%${pts !== null && findingsMax !== null ? ` (${pts}/${findingsMax})` : ''}`;
+                          if (avgFindings !== null) return `${avgFindings}%${pts !== null && findingsMax !== null ? ` (${pts}/${findingsMax} pts)` : ''}`;
                           return '-';
                         } catch (e) {
                           return '-';
@@ -2268,7 +2315,7 @@ const ExamResults = () => {
                         const rawKey = JSON.parse(viewErrorsExam.answer_key);
                         const parsed = rawKey.specimens && Array.isArray(rawKey.specimens) ? rawKey.specimens : (Array.isArray(rawKey) ? rawKey : null);
                         if (!parsed || !Array.isArray(parsed) || parsed.length === 0) return <div className="text-xs text-muted-foreground">No table answer key found</div>;
-                        const cols = Object.keys(parsed[0]).filter(k => !['points','id','rowId'].includes(k));
+                        const cols = Object.keys(parsed[0]).filter(k => !['points','pointType','id','rowId'].includes(k));
                         // Compute per-row correct/wrong counts across student results
                         const rowStats = parsed.map(() => ({ correct: 0, wrong: 0 }));
                         try {

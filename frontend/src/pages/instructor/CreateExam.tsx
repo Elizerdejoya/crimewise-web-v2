@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { jwtDecode } from "jwt-decode";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +59,8 @@ const CreateExam = () => {
   const [classes, setClasses] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const tokenDisplayRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
 
@@ -136,6 +138,8 @@ const CreateExam = () => {
       return;
     }
 
+    setIsGenerating(true);
+
     const instructorId = currentUser.id;
     const payload = {
       name: examName,
@@ -161,6 +165,7 @@ const CreateExam = () => {
           description: "Please log in again.",
           variant: "destructive",
         });
+        setIsGenerating(false);
         return;
       }
 
@@ -168,12 +173,32 @@ const CreateExam = () => {
         const data = await res.json();
         setGeneratedToken(data.token || "");
         toast({ title: "Exam Created Successfully", description: "The exam token has been generated." });
+        
+        // Scroll to token display
+        setTimeout(() => {
+          tokenDisplayRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+        
+        // Reset form fields after successful creation
+        setExamName("");
+        setCourse("");
+        setSelectedClass("");
+        setStartDate("");
+        setStartTime("");
+        setEndDate("");
+        setEndTime("");
+        setDuration("");
+        setSelectedQuestion("");
+        
+        setIsGenerating(false);
       } else {
         const error = await res.json();
         toast({ title: "Error", description: error.error || "Failed to create exam.", variant: "destructive" });
+        setIsGenerating(false);
       }
     } catch (err) {
       toast({ title: "Error", description: "Failed to create exam.", variant: "destructive" });
+      setIsGenerating(false);
     }
   };
 
@@ -355,12 +380,14 @@ const CreateExam = () => {
               </div>
             </CardContent>
             <CardFooter className="flex justify-end">
-              <Button onClick={handleGenerateExam}>Generate Exam</Button>
+              <Button onClick={handleGenerateExam} disabled={isGenerating}>
+                {isGenerating ? "Generating..." : "Generate Exam"}
+              </Button>
             </CardFooter>
           </Card>
 
           {generatedToken && (
-            <Card className="border-primary/50">
+            <Card className="border-primary/50" ref={tokenDisplayRef}>
               <CardHeader className="bg-primary/5">
                 <CardTitle className="text-primary">Exam Token Generated</CardTitle>
                 <CardDescription>

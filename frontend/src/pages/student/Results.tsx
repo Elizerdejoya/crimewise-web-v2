@@ -297,8 +297,8 @@ const Results = () => {
           <div class="exam-info" style="margin-top: 12px;">
             <p><strong>Course:</strong> ${result.course}</p>
             <p><strong>Date:</strong> ${result.date}</p>
-            <p><strong>Table score:</strong> ${result.question_type === "forensic" && result.totalPoints > 0
-        ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts) | Raw: ${result.raw_score}/${result.raw_total}`
+            <p><strong>Table score:</strong> ${result.totalPoints && result.totalPoints > 0
+        ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
         : result.raw_score !== undefined && result.raw_total !== undefined
           ? `${result.score}% (${result.raw_score}/${result.raw_total})`
           : (result.score !== undefined ? `${result.score}%` : "-")}</p>
@@ -764,19 +764,30 @@ const Results = () => {
           ? JSON.parse(result.details) 
           : result.details;
         
-        // Extract scoring information from details
-        if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
-          raw_score = parseInt(detailsObj.totalScore, 10);
-          raw_total = parseInt(detailsObj.totalPossiblePoints, 10);
+        // Extract raw score and total from details (row-level scoring, NOT points)
+        if (detailsObj.raw_score !== undefined && detailsObj.raw_total !== undefined) {
+          raw_score = detailsObj.raw_score;
+          raw_total = detailsObj.raw_total;
         }
         
-        // Extract explanation/findings score if available
-        if (detailsObj.explanationScore !== undefined && detailsObj.explanationPoints !== undefined) {
-          // These are additional points for explanation/conclusion
-          const explanationScore = parseInt(detailsObj.explanationScore, 10);
-          const explanationPoints = parseInt(detailsObj.explanationPoints, 10);
-          totalPoints = (raw_total || 0) + explanationPoints;
-          earnedPoints = (raw_score || 0) + explanationScore;
+        // Extract points-based scoring (totalScore and totalPossiblePoints)
+        // These include row points but NOT explanation points
+        if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+          // totalScore and totalPossiblePoints already include all points
+          totalPoints = detailsObj.totalPossiblePoints;
+          earnedPoints = detailsObj.totalScore;
+        }
+        
+        // If totalPossiblePoints is still 0 but we have rowDetails, recalculate it
+        // This handles old exam results that might not have totalPossiblePoints stored correctly
+        if (totalPoints === 0 && detailsObj.rowDetails && Array.isArray(detailsObj.rowDetails)) {
+          totalPoints = detailsObj.rowDetails.reduce((sum: number, row: any) => {
+            return sum + (row.possiblePoints || 0);
+          }, 0);
+          
+          if (earnedPoints === 0 && detailsObj.totalScore !== undefined) {
+            earnedPoints = detailsObj.totalScore;
+          }
         }
       } catch (e) {
         console.error("Error parsing details:", e);
@@ -786,13 +797,13 @@ const Results = () => {
     // Calculate percentage score using points system if available, otherwise raw score
     let score = result.score;
     
-    // If we extracted raw_score and raw_total from details, calculate the percentage
-    if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
-      score = Math.round((raw_score / raw_total) * 100);
-    }
-    // If totalPoints was calculated (with explanation), use that
-    else if (totalPoints > 0) {
+    // If we have totalPoints (including row points), use that for percentage
+    if (totalPoints > 0) {
       score = Math.round((earnedPoints / totalPoints) * 100);
+    }
+    // Otherwise, if we extracted raw_score and raw_total, calculate the percentage
+    else if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
+      score = Math.round((raw_score / raw_total) * 100);
     }
 
     const getCourseName = (r: any) => {
@@ -955,8 +966,8 @@ const Results = () => {
                               <TableCell>
                                 <div className="text-sm">
                                   <div><span className="text-xs font-medium text-gray-700">Table:</span>{' '}
-                                    {result.question_type === "forensic" && result.totalPoints > 0
-                                      ? `${result.score}% (${result.earnedPoints}/${result.totalPoints})`
+                                    {result.totalPoints && result.totalPoints > 0
+                                      ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
                                       : result.raw_score !== undefined && result.raw_total !== undefined
                                         ? `${result.score}% (${result.raw_score}/${result.raw_total})`
                                         : (result.score !== undefined ? `${result.score}%` : "-")}
@@ -1047,8 +1058,8 @@ const Results = () => {
                                         <p className="text-sm font-medium">Score</p>
                                         <div className="text-sm break-words">
                                           <div><span className="text-muted-foreground text-xs">Table:</span>{' '}
-                                            {result.question_type === "forensic" && result.totalPoints > 0
-                                              ? `${result.score}% (${result.earnedPoints}/${result.totalPoints})`
+                                            {result.totalPoints && result.totalPoints > 0
+                                              ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
                                               : result.raw_score !== undefined && result.raw_total !== undefined
                                                 ? `${result.score}% (${result.raw_score}/${result.raw_total})`
                                                 : (result.score !== undefined ? `${result.score}%` : "-")}
@@ -1290,6 +1301,8 @@ const Results = () => {
                                                     <TableHead key={idx} className="min-w-[120px] whitespace-nowrap">{col}</TableHead>
                                                   ))}
                                                   <TableHead className="min-w-[100px] whitespace-nowrap">Result/Points</TableHead>
+                                                  <TableHead className="min-w-[100px] whitespace-nowrap">Points Value</TableHead>
+                                                  <TableHead className="min-w-[100px] whitespace-nowrap">Point Type</TableHead>
                                                 </TableRow>
                                               </TableHeader>
                                               <TableBody>
@@ -1347,6 +1360,12 @@ const Results = () => {
                                                           </span>
                                                         </div>
                                                       </TableCell>
+                                                      <TableCell className="min-w-[100px] text-center">
+                                                        <span className="text-sm font-medium">{row.pointsValue || 1}</span>
+                                                      </TableCell>
+                                                      <TableCell className="min-w-[100px] text-center">
+                                                        <span className="text-sm">{row.pointType === "each" ? "for each correct" : "if both correct"}</span>
+                                                      </TableCell>
                                                     </TableRow>
                                                   );
                                                 })}
@@ -1357,11 +1376,7 @@ const Results = () => {
                                           {/* Summary Section */}
                                           <div className="mt-4 p-3 sm:p-4 bg-gray-50 rounded-md">
                                             <h4 className="text-sm font-medium mb-3">Scoring Summary</h4>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
-                                              <div className="flex flex-col">
-                                                <span className="text-muted-foreground text-xs">Raw Score:</span>
-                                                <div className="font-semibold text-sm">{result.raw_score}/{result.raw_total}</div>
-                                              </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                                               {result.totalPoints > 0 && (
                                                 <div className="flex flex-col">
                                                   <span className="text-muted-foreground text-xs">Points:</span>
@@ -1474,9 +1489,9 @@ const Results = () => {
                                                 if (detailsObj.explanationDetails && detailsObj.explanationDetails.studentText) {
                                                   explanation = detailsObj.explanationDetails.studentText;
                                                 }
-                                                // Expected explanation is sometimes stored as explanation property
-                                                if (detailsObj.explanation) {
-                                                  expectedExplanation = detailsObj.explanation;
+                                                // Expected explanation is stored as teacherExplanation
+                                                if (detailsObj.teacherExplanation) {
+                                                  expectedExplanation = detailsObj.teacherExplanation;
                                                 }
                                               }
 
@@ -1555,7 +1570,7 @@ const Results = () => {
                               <div className="text-xs text-muted-foreground truncate">{result.course} • {formatDate(result.date)}</div>
                               <div className="text-xs mt-1 text-gray-700">
                                 <span className="font-medium">Table score:</span>{' '}
-                                {result.question_type === "forensic" && result.totalPoints > 0
+                                {result.totalPoints && result.totalPoints > 0
                                   ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
                                   : result.raw_score !== undefined && result.raw_total !== undefined
                                     ? `${result.score}% (${result.raw_score}/${result.raw_total})`

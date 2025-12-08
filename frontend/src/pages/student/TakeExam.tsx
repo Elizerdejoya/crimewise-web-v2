@@ -551,11 +551,15 @@ const TakeExam = () => {
 
         // Track scoring details for potentially showing to the student later
         const rowDetails = [];
-        let totalScore = 0;
-        let totalPossiblePoints = 0;
+        let tableScore = 0; // Score from table rows ONLY
+        let totalScore = 0; // Total including explanation (for overall percentage)
+        let totalPossiblePoints = 0; // Only for table rows, NOT explanation
+        let raw_score = 0; // Count of correct rows
+        let raw_total = 0; // Total number of rows
 
         // Get explanation points from parsed answer if available
         let explanationPoints = 0;
+        let explanationScore = 0; // Will be calculated separately
         try {
           const parsedAnswer = JSON.parse(question.answer || "{}");
           if (
@@ -563,7 +567,6 @@ const TakeExam = () => {
             typeof parsedAnswer.explanation.points === "number"
           ) {
             explanationPoints = parsedAnswer.explanation.points;
-            totalPossiblePoints += explanationPoints;
           }
         } catch (e) {
           console.error("Error extracting explanation points:", e);
@@ -572,12 +575,23 @@ const TakeExam = () => {
         // Process each row in the forensic table - safe iteration with Array.isArray check
         if (Array.isArray(forensicRows)) {
           forensicRows.forEach((row: any, rowIdx: number) => {
-            // Get row points (default to 1 if not specified)
-            const rowPoints = hasPointsPerRow ? Number(row.points) || 1 : 1;
-            totalPossiblePoints += rowPoints;
+            raw_total++; // Increment total row count
+            
+            // Get row points - check if this specific row has points, not just the first row
+            const rowPoints = "points" in row ? Number(row.points) || 1 : 1;
+            const pointType = row.pointType || "both"; // Default to "both" for backward compatibility
 
-            // Get the columns to check (excluding points which is metadata)
-            const columns = Object.keys(row).filter((col) => col !== "points");
+            // Get the columns to check (excluding points and pointType which are metadata)
+            const columns = Object.keys(row).filter((col) => !["points", "pointType"].includes(col));
+            
+            // Calculate possible points for this row based on point type
+            let possiblePointsForRow = rowPoints;
+            if (pointType === "each") {
+              // If "each", points can be earned per correct column
+              possiblePointsForRow = rowPoints * columns.length;
+            }
+            totalPossiblePoints += possiblePointsForRow;
+
             const rowResult = {
               rowIndex: rowIdx,
               questionSpecimen: row.questionSpecimen,
@@ -585,13 +599,16 @@ const TakeExam = () => {
               userValue: answer[rowIdx] || {},
               correct: false,
               points: 0,
-              possiblePoints: rowPoints,
+              possiblePoints: possiblePointsForRow,
+              pointsValue: rowPoints, // Store the actual points set for this row
+              pointType: pointType, // Store the point type ("both" or "each")
               columnScores: {},
             };
 
             // Check if this row's answer is correct by evaluating each column
             if (answer[rowIdx]) {
               let allCorrect = true;
+              let correctColumnCount = 0;
 
               // Check each column for exact match
               columns.forEach((col) => {
@@ -612,16 +629,34 @@ const TakeExam = () => {
                   correctValue,
                 };
 
-                if (!isExactMatch) {
+                if (isExactMatch) {
+                  correctColumnCount++;
+                } else {
                   allCorrect = false;
                 }
               });
 
-              // Award full points only if all columns are exactly correct
-              if (allCorrect) {
-                rowResult.correct = true;
-                rowResult.points = rowPoints;
-                totalScore += rowPoints;
+              // Award points based on point type
+              if (pointType === "both") {
+                // Award full points only if all columns are exactly correct
+                if (allCorrect) {
+                  rowResult.correct = true;
+                  rowResult.points = rowPoints;
+                  tableScore += rowPoints;
+                  totalScore += rowPoints;
+                  raw_score++; // Increment correct row count
+                }
+              } else if (pointType === "each") {
+                // Award points for each correct column
+                rowResult.points = correctColumnCount * rowPoints;
+                if (rowResult.points > 0) {
+                  tableScore += rowResult.points;
+                  totalScore += rowResult.points;
+                }
+                rowResult.correct = allCorrect; // Mark correct only if all correct
+                if (allCorrect) {
+                  raw_score++; // Increment correct row count only if all columns correct
+                }
               }
             }
 
@@ -630,7 +665,6 @@ const TakeExam = () => {
         }
 
         // Add points for explanation if provided
-        let explanationScore = 0;
         let explanationDetails = null;
         if (explanationPoints > 0) {
           // Get the expected conclusion from the question
@@ -698,12 +732,33 @@ const TakeExam = () => {
           totalScore += explanationScore;
         }
 
+        // Determine teacherFindings BEFORE creating details object
+        let teacherFindingsForDetails = '';
+        try {
+          if (question.explanation && String(question.explanation).trim()) {
+            teacherFindingsForDetails = question.explanation;
+          } else if (question.answer) {
+            const parsed = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
+            if (parsed && parsed.explanation) {
+              if (typeof parsed.explanation === 'string') teacherFindingsForDetails = parsed.explanation;
+              else if (parsed.explanation.text) teacherFindingsForDetails = parsed.explanation.text;
+            } else {
+              teacherFindingsForDetails = question.answer;
+            }
+          }
+        } catch (e) {
+          teacherFindingsForDetails = question.answer || '';
+        }
+
         score = Math.round(totalScore); // Ensure score is an integer
         details = {
           rowDetails,
-          totalScore,
+          totalScore: tableScore, // Use tableScore (without explanation) for table-specific scoring
           totalPossiblePoints,
+          raw_score,
+          raw_total,
           explanation: explanation.trim(),
+          teacherExplanation: teacherFindingsForDetails,
           explanationScore,
           explanationPoints,
           explanationDetails,
@@ -789,23 +844,8 @@ const TakeExam = () => {
 
       // Enqueue AI grading (non-blocking)
       try {
-        // Determine teacherFindings: prefer question.explanation, fallback to answer.explanation.text or question.answer
-        let teacherFindingsToSend = '';
-        try {
-          if (question.explanation && String(question.explanation).trim()) {
-            teacherFindingsToSend = question.explanation;
-          } else if (question.answer) {
-            const parsed = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
-            if (parsed && parsed.explanation) {
-              if (typeof parsed.explanation === 'string') teacherFindingsToSend = parsed.explanation;
-              else if (parsed.explanation.text) teacherFindingsToSend = parsed.explanation.text;
-            } else {
-              teacherFindingsToSend = question.answer;
-            }
-          }
-        } catch (e) {
-          teacherFindingsToSend = question.answer || '';
-        }
+        // Use the same teacherFindings that was stored in details
+        const teacherFindingsToSend = teacherFindingsForDetails;
 
         fetch(`${API_BASE_URL}/api/ai-grader/submit`, {
           method: 'POST',
@@ -816,6 +856,12 @@ const TakeExam = () => {
             teacherFindings: teacherFindingsToSend,
             studentFindings: answerToSave || ''
           })
+        }).then(() => {
+          // Trigger AI worker to process the job immediately (for serverless/Vercel)
+          fetch(`${API_BASE_URL}/api/trigger-ai-worker?limit=1&rounds=1`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+          }).catch(err => console.error('Failed to trigger AI worker:', err));
         }).catch(err => console.error('Failed to enqueue AI grading:', err));
       } catch (e) {
         console.error('AI enqueue error:', e);
@@ -874,10 +920,10 @@ const TakeExam = () => {
     forensicRows = [];
   }
 
-  // Get the columns from the first row (excluding points which is metadata)
+  // Get the columns from the first row (excluding points and pointType which are metadata)
   const columns =
     forensicRows.length > 0
-      ? Object.keys(forensicRows[0]).filter((col) => col !== "points")
+      ? Object.keys(forensicRows[0]).filter((col) => !["points", "pointType"].includes(col))
       : [];
 
   // Split the stored image string into question vs standard images.
@@ -1020,42 +1066,21 @@ const TakeExam = () => {
                 </td>
                 {columns.map((col, colIdx) => (
                   <td key={colIdx} className="border p-1">
-                    {colIdx === 0 && row.points && (
-                      <div className="w-full flex justify-between mb-1">
-                        <input
-                          className="w-full px-2 py-1 text-sm"
-                          value={answer[rowIdx]?.[col] || ""}
-                          onChange={(e) => {
-                            const arr = Array.isArray(answer)
-                              ? [...answer]
-                              : Array(forensicRows.length).fill({});
-                            arr[rowIdx] = {
-                              ...arr[rowIdx],
-                              [col]: e.target.value,
-                            };
-                            setAnswer(arr);
-                          }}
-                          placeholder={`Enter ${col}`}
-                        />
-                      </div>
-                    )}
-                    {(colIdx !== 0 || !row.points) && (
-                      <input
-                        className="w-full px-2 py-1 text-sm"
-                        value={answer[rowIdx]?.[col] || ""}
-                        onChange={(e) => {
-                          const arr = Array.isArray(answer)
-                            ? [...answer]
-                            : Array(forensicRows.length).fill({});
-                          arr[rowIdx] = {
-                            ...arr[rowIdx],
-                            [col]: e.target.value,
-                          };
-                          setAnswer(arr);
-                        }}
-                        placeholder={`Enter ${col}`}
-                      />
-                    )}
+                    <input
+                      className="w-full px-2 py-1 text-sm"
+                      value={answer[rowIdx]?.[col] || ""}
+                      onChange={(e) => {
+                        const arr = Array.isArray(answer)
+                          ? [...answer]
+                          : Array(forensicRows.length).fill({});
+                        arr[rowIdx] = {
+                          ...arr[rowIdx],
+                          [col]: e.target.value,
+                        };
+                        setAnswer(arr);
+                      }}
+                      placeholder={`Enter ${col}`}
+                    />
                   </td>
                 ))}
               </tr>

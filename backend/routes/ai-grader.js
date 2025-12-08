@@ -207,4 +207,49 @@ router.post('/requeue', async (req, res) => {
   }
 });
 
+// GET /api/ai-grader/metrics - Get AI grader performance metrics
+router.get('/metrics', async (req, res) => {
+  try {
+    // Get total graded (done status)
+    const totalGradedResult = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'done'`;
+    const totalGraded = (Array.isArray(totalGradedResult) ? totalGradedResult[0]?.count : totalGradedResult?.count) || 0;
+
+    // Get pending queue count
+    const pendingResult = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'pending'`;
+    const pendingQueue = (Array.isArray(pendingResult) ? pendingResult[0]?.count : pendingResult?.count) || 0;
+
+    // Get error count for success rate calculation
+    const errorResult = await db.sql`SELECT COUNT(*) as count FROM ai_queue WHERE status = 'error'`;
+    const errorCount = (Array.isArray(errorResult) ? errorResult[0]?.count : errorResult?.count) || 0;
+
+    // Calculate success rate
+    const totalProcessed = totalGraded + errorCount;
+    const successRate = totalProcessed > 0 ? Math.round((totalGraded / totalProcessed) * 100) : 100;
+
+    // Get average grading time (in seconds) for done items
+    // Using the difference between updated_at and created_at
+    // PostgreSQL: Extract EPOCH gives seconds since epoch
+    const timeResult = await db.sql`
+      SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) as avg_time_seconds
+      FROM ai_queue 
+      WHERE status = 'done' AND updated_at IS NOT NULL AND created_at IS NOT NULL
+    `;
+    const averageGradeTime = timeResult && (Array.isArray(timeResult) ? timeResult[0]?.avg_time_seconds : timeResult?.avg_time_seconds) 
+      ? Math.round(Array.isArray(timeResult) ? timeResult[0].avg_time_seconds : timeResult.avg_time_seconds)
+      : 0;
+
+    res.json({
+      totalGraded: Number(totalGraded),
+      pendingQueue: Number(pendingQueue),
+      successRate: Math.min(100, Math.max(0, successRate)),
+      averageGradeTime: Math.max(0, averageGradeTime),
+      errorCount: Number(errorCount),
+      totalProcessed: totalProcessed
+    });
+  } catch (err) {
+    console.error('[AI-GRADER][METRICS] Error:', err && err.message ? err.message : err);
+    res.status(500).json({ error: 'Failed to fetch metrics' });
+  }
+});
+
 module.exports = router;

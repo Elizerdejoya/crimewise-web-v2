@@ -3,29 +3,34 @@ const { GoogleGenAI } = require('@google/genai');
 const apiKeyManager = require('./apiKeyManager');
 
 async function gradeStudent(studentId, examId, teacherFindings, studentFindings, apiKeyObj = null) {
-  console.log('[GRADER] Scheduling grading for student', studentId, 'exam', examId);
+  console.log('[GRADER] Starting grading for student', studentId, 'exam', examId);
   
-  // PRE-CHECK: If answers are identical/nearly identical, return perfect score immediately
-  const normalize = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const tNorm = normalize(teacherFindings);
-  const sNorm = normalize(studentFindings);
-  
+  try {
+    // PRE-CHECK: If answers are identical/nearly identical, return perfect score immediately
+    const normalize = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const tNorm = normalize(teacherFindings);
+    const sNorm = normalize(studentFindings);
+    
     if (tNorm && sNorm && tNorm === sNorm) {
-    console.log('[GRADER] EXACT MATCH DETECTED: Identical answers for student', studentId);
-    const perfectScore = {
-      accuracy: 100,
-      completeness: 100,
-      clarity: 100,
-      objectivity: 100,
-      overall: 100
-    };
-    const perfectFeedback = 'Perfect! Your findings match the teacher\'s answer exactly. You demonstrated excellent attention to detail and comprehensive understanding of the forensic analysis.';
-    try {
-      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${perfectScore.overall}, ${perfectScore.accuracy}, ${perfectScore.completeness}, ${perfectScore.clarity}, ${perfectScore.objectivity}, ${perfectFeedback}, ${'EXACT_MATCH_PRECHECK'}, ${null})`;
-    } catch (dbErr) {
-      console.error('[GRADER] Failed to save perfect score grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
+      console.log('[GRADER] EXACT MATCH DETECTED: Identical answers for student', studentId);
+      const perfectScore = {
+        accuracy: 100,
+        completeness: 100,
+        clarity: 100,
+        objectivity: 100,
+        overall: 100
+      };
+      const perfectFeedback = 'Perfect! Your findings match the teacher\'s answer exactly. You demonstrated excellent attention to detail and comprehensive understanding of the forensic analysis.';
+      try {
+        await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${perfectScore.overall}, ${perfectScore.accuracy}, ${perfectScore.completeness}, ${perfectScore.clarity}, ${perfectScore.objectivity}, ${perfectFeedback}, ${'EXACT_MATCH_PRECHECK'}, ${null})`;
+        console.log('[GRADER] Perfect match grade saved for student', studentId);
+      } catch (dbErr) {
+        console.error('[GRADER] Failed to save perfect score grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
+      }
+      return { score: perfectScore.overall, feedback: perfectFeedback };
     }
-    return { score: perfectScore.overall, feedback: perfectFeedback };
+  } catch (e) {
+    console.error('[GRADER] Error in pre-check:', e && e.message ? e.message : e);
   }
   
   // Attempt to load per-question rubric weights from the exams->questions relationship
@@ -120,15 +125,26 @@ Return ONLY valid JSON with these exact fields:
     // Try the Gemini call with a couple of retries to handle transient network issues
     let response = null;
     const maxRetries = 2;
+    const timeoutMs = 60000; // 60 second timeout per attempt
+    
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        response = await genAI.models.generateContent({
+        // Wrap the generateContent call with a timeout
+        const generatePromise = genAI.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [
             { role: 'user', parts: [{ text: prompt }] }
           ],
           config: { temperature: 0.0 }
         });
+
+        response = await Promise.race([
+          generatePromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Gemini API timeout after 60s')), timeoutMs)
+          )
+        ]);
+        console.log('[GRADER] Gemini API call succeeded on attempt', attempt);
         break;
       } catch (callErr) {
         // Inspect for rate-limit or server errors

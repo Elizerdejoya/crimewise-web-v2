@@ -104,7 +104,14 @@ app.use("/api", questionsRouter);
 app.use("/api", contactRoutes);
 app.use("/", homeRoutes);
 
-app.use(express.static(path.join(__dirname, "../frontend/dist")));
+// Serve static files from frontend dist (but don't interfere with API routes)
+app.use((req, res, next) => {
+  // Skip static serving for /api routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  express.static(path.join(__dirname, "../frontend/dist"))(req, res, next);
+});
 
 app.get("/test", (req, res) => {
   res.json({

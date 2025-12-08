@@ -180,15 +180,12 @@ const AIAssistant: React.FC = () => {
       return;
     }
 
-    // Determine message type based on whether an image is selected
-    const isImageMessage = selectedImage && imagePreview;
     const userMessage: Message = {
       id: Date.now().toString(),
       content: messageText,
       role: "user",
       timestamp: new Date().toISOString(),
-      type: isImageMessage ? "image-analysis" : "text",
-      imageUrl: isImageMessage ? imagePreview : undefined,
+      type: "text",
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -196,34 +193,16 @@ const AIAssistant: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let response;
-
-      // If an image is selected, send using FormData with image
-      if (selectedImage && imagePreview) {
-        const formData = new FormData();
-        formData.append("image", selectedImage);
-        // include the textual question so the analyzer can use it
-        formData.append("message", messageText);
-        formData.append("userId", currentUser?.id || "");
-
-        // Use the same analyze endpoint the "Analyze" button uses
-        response = await fetch(`${API_BASE_URL}/api/chatbot/analyze-image`, {
-          method: "POST",
-          body: formData,
-        });
-      } else {
-        // Regular text message
-        response = await fetch(`${API_BASE_URL}/api/chatbot/message`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            message: messageText,
-            userId: currentUser?.id,
-          }),
-        });
-      }
+      const response = await fetch(`${API_BASE_URL}/api/chatbot/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: messageText,
+          userId: currentUser?.id,
+        }),
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -238,18 +217,9 @@ const AIAssistant: React.FC = () => {
           content: aiContent,
           role: "assistant",
           timestamp: data.timestamp || new Date().toISOString(),
-          type: isImageMessage ? "image-analysis" : "text",
+          type: "text",
         };
         setMessages((prev) => [...prev, assistantMessage]);
-
-        // Clear image after sending
-        if (selectedImage) {
-          setSelectedImage(null);
-          setImagePreview(null);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
-        }
       } else {
         throw new Error("Failed to send message");
       }
@@ -451,96 +421,101 @@ const AIAssistant: React.FC = () => {
 
   return (
     <DashboardLayout>
-      <div className="container mx-auto p-6 h-full flex flex-col">
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Bot className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-3xl font-bold">AI Assistant</h1>
-                <p className="text-muted-foreground">
-                  Forensic handwriting analysis assistant. Upload images for
-                  detailed analysis.
-                </p>
+      <div className="w-full h-full flex items-center justify-center p-2">
+        <Card className="w-full h-full max-h-[calc(100vh-120px)] flex flex-col shadow-lg border-0">
+          {/* Header */}
+          <CardHeader className="text-white py-4 px-6 rounded-t-lg flex-shrink-0" style={{ backgroundColor: "hsl(221, 83%, 16%)" }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Bot className="h-6 w-6" />
+                <h2 className="text-lg font-semibold">AI Assistant</h2>
               </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={clearChatHistory}
+                disabled={isLoading}
+                className="h-8 px-3 text-white hover:text-white"
+                style={{ backgroundColor: "hsl(221, 83%, 20%)" }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              className="ml-2 inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-              onClick={clearChatHistory}
-              disabled={isLoading}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Clear History
-            </Button>
-          </div>
-        </div>
-
-        <Card className="flex-1 flex flex-col min-h-0">
-          <CardContent className="flex-1 flex flex-col p-0 min-h-0">
+          </CardHeader>
+          
+          <CardContent className="flex-1 flex flex-col p-0 min-h-0 overflow-hidden bg-white">
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0 text-sm">
               {messages.length === 0 ? (
-                <div className="text-center text-muted-foreground py-12">
-                  <Bot className="h-16 w-16 mx-auto mb-6 text-blue-600" />
-                  <p className="text-xl font-medium mb-2">
-                    Welcome to CrimeWise AI Assistant
-                  </p>
-                  <p className="text-base">
-                    Ask questions about forensic analysis or upload handwriting
-                    images for detailed examination.
-                  </p>
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                  <Bot className="h-14 w-14 text-blue-600" />
+                  <div>
+                    <p className="font-semibold text-gray-800 text-base">Ask me anything</p>
+                    <p className="text-sm text-gray-500 mt-1">about forensic handwriting analysis</p>
+                  </div>
+                  {/* Quick Suggestions */}
+                  <div className="space-y-2 w-full mt-6 text-left max-w-md">
+                    {quickPrompts.slice(0, 3).map((prompt, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setInputMessage(prompt)}
+                        className="w-full p-3 rounded-lg border text-sm font-medium text-left line-clamp-2 transition-colors"
+                        style={{ borderColor: "hsl(221, 83%, 20%)", backgroundColor: "hsl(221, 83%, 95%)", color: "hsl(221, 83%, 16%)" }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = "hsl(221, 83%, 90%)"}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = "hsl(221, 83%, 95%)"}
+                      >
+                        💡 {prompt}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex gap-4 ${message.role === "user" ? "justify-end" : "justify-start"
-                      }`}
+                    className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {message.role === "assistant" && (
-                      <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                        <Bot className="h-5 w-5 text-white" />
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-1 text-white" style={{ backgroundColor: "hsl(221, 83%, 16%)" }}>
+                        <Bot className="h-4 w-4" />
                       </div>
                     )}
 
                     <div
-                      className={`max-w-[70%] rounded-lg p-4 ${message.role === "user"
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-100 text-gray-900"
+                      className={`max-w-lg rounded-lg p-3 text-sm leading-relaxed ${message.role === "user"
+                          ? "text-white rounded-br-none"
+                          : "bg-gray-100 text-gray-900 rounded-bl-none"
                         }`}
+                      style={message.role === "user" ? { backgroundColor: "hsl(221, 83%, 20%)" } : {}}
                     >
-                      {message.type === "image-analysis" &&
-                        message.imageUrl && (
-                          <div className="mb-3">
-                            <img
-                              src={message.imageUrl}
-                              alt="Handwriting sample"
-                              className="max-w-full h-auto rounded border"
-                              style={{ maxHeight: "200px" }}
-                            />
-                          </div>
-                        )}
-                      <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(message.content) }} />
-                      <div className={`text-xs mt-2 ${message.role === "user" ? "text-blue-100" : "text-gray-500"}`}>
-                        <div className="flex items-center gap-2">
-                          <div>{new Date(message.timestamp).toLocaleTimeString()}</div>
-                          {message.role === "assistant" && message.type === "image-analysis" && (
-                            <Button
-                              className="ml-2 rounded-md bg-gray-600 text-white px-2 py-1 text-sm hover:bg-gray-700"
-                              onClick={() => handlePrintAnalysis(message)}
-                              disabled={isLoading}
-                              title="Print analysis report"
-                            >
-                              <Printer className="h-4 w-4" />
-                            </Button>
-                          )}
+                      {message.type === "image-analysis" && message.imageUrl && (
+                        <div className="mb-2">
+                          <img
+                            src={message.imageUrl}
+                            alt="Handwriting sample"
+                            className="max-w-full h-auto rounded"
+                            style={{ maxHeight: "120px" }}
+                          />
                         </div>
-                      </div>
+                      )}
+                      <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(message.content) }} />
+                      {message.role === "assistant" && message.type === "image-analysis" && (
+                        <Button
+                          className="mt-2 rounded-md px-2 py-1 text-xs text-white hover:opacity-90"
+                          onClick={() => handlePrintAnalysis(message)}
+                          disabled={isLoading}
+                          title="Print analysis report"
+                          style={{ backgroundColor: "hsl(221, 83%, 20%)" }}
+                        >
+                          <Printer className="h-3.5 w-3.5 mr-1" />
+                          Print
+                        </Button>
+                      )}
                     </div>
 
                     {message.role === "user" && (
-                      <div className="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
-                        <User className="h-5 w-5 text-white" />
+                      <div className="w-7 h-7 rounded-full bg-gray-400 flex items-center justify-center flex-shrink-0 mt-1">
+                        <User className="h-4 w-4 text-white" />
                       </div>
                     )}
                   </div>
@@ -548,22 +523,14 @@ const AIAssistant: React.FC = () => {
               )}
 
               {isLoading && (
-                <div className="flex gap-4 justify-start">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
-                    <Bot className="h-5 w-5 text-white" />
+                <div className="flex gap-3 justify-start">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white" style={{ backgroundColor: "hsl(221, 83%, 16%)" }}>
+                    <Bot className="h-4 w-4" />
                   </div>
-                  <div className="bg-gray-100 rounded-lg p-4">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.1s" }}
-                      ></div>
-                      <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0.2s" }}
-                      ></div>
-                    </div>
+                  <div className="bg-gray-100 rounded-lg p-3 flex gap-1">
+                    <div className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }}></div>
+                    <div className="w-2.5 h-2.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
                   </div>
                 </div>
               )}
@@ -571,86 +538,35 @@ const AIAssistant: React.FC = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Image Upload Area */}
+            {/* Image Upload Preview */}
             {selectedImage && (
-              <div className="border-t p-4 bg-gray-50 flex-shrink-0">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={imagePreview || ""}
-                    alt="Preview"
-                    className="w-16 h-16 object-cover rounded border"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{selectedImage.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
-                    </p>
+              <div className="border-t p-3 flex-shrink-0" style={{ backgroundColor: "hsl(221, 83%, 95%)" }}>
+                <div className="flex items-center gap-3">
+                  <img src={imagePreview || ""} alt="Preview" className="w-11 h-11 object-cover rounded border-2" style={{ borderColor: "hsl(221, 83%, 20%)" }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">{selectedImage.name}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={analyzeImage}
-                      disabled={isAnalyzing}
-                    >
-                      {isAnalyzing ? "Analyzing..." : "Analyze"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedImage(null);
-                        setImagePreview(null);
-                        if (fileInputRef.current) {
-                          fileInputRef.current.value = "";
-                        }
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </div>
+                  <Button size="sm" onClick={analyzeImage} disabled={isAnalyzing} className="px-4 py-2 text-sm text-white flex-shrink-0" style={{ backgroundColor: "hsl(221, 83%, 16%)" }}>
+                    {isAnalyzing ? "Analyzing..." : "Analyze"}
+                  </Button>
+                  <button onClick={() => { setSelectedImage(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="h-8 w-8 flex items-center justify-center hover:bg-gray-200 rounded text-gray-500 flex-shrink-0">
+                    ✕
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Input Area */}
-            <div className="border-t p-4 flex-shrink-0">
-              {selectedImage && (
-                <div className="mb-3 p-3 bg-blue-50 rounded border border-blue-200">
-                  <p className="text-xs font-medium text-blue-900 mb-2">Quick questions about your image:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {quickPrompts.map((p, idx) => (
-                      <button
-                        key={idx}
-                        className="text-xs px-3 py-1.5 rounded bg-blue-500 text-white hover:bg-blue-600"
-                        onClick={() => sendMessage(p)}
-                        title="Ask this question about the uploaded image"
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="mb-2 flex flex-wrap gap-2">
-                {!selectedImage && quickPrompts.map((p, idx) => (
-                  <button
-                    key={idx}
-                    className="text-xs px-3 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80"
-                    onClick={() => setInputMessage(p)}
-                    title="Click to load prompt into input"
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-3">
+            <div className="border-t bg-gray-50 p-4 flex-shrink-0">
+              <div className="flex gap-3 items-center">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  title="Upload image for analysis"
+                  className="h-9 w-9 p-0 flex-shrink-0 border-gray-300 hover:bg-gray-100"
+                  title="Upload image"
                 >
-                  <Upload className="h-4 w-4" />
+                  <Upload className="h-4.5 w-4.5 text-gray-600" />
                 </Button>
                 <Input
                   ref={fileInputRef}
@@ -663,15 +579,18 @@ const AIAssistant: React.FC = () => {
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask about forensic analysis or upload an image..."
-                  className="flex-1"
+                  placeholder="Type a question..."
+                  className="flex-1 h-9 text-sm placeholder:text-gray-400 border-gray-300"
                   disabled={isLoading}
                 />
                 <Button
                   onClick={() => sendMessage()}
                   disabled={!inputMessage.trim() || isLoading}
+                  size="sm"
+                  className="h-9 w-9 p-0 flex-shrink-0 text-white"
+                  style={{ backgroundColor: "hsl(221, 83%, 16%)" }}
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-4.5 w-4.5" />
                 </Button>
               </div>
             </div>

@@ -110,7 +110,8 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
             const rows = parsedAnswer.map((row: any) => ({
               questionSpecimen: row.questionSpecimen || "",
               standardSpecimen: row.standardSpecimen || "",
-              points: row.points || 1
+              points: row.points || 1,
+              pointType: row.pointType || "each"
             }));
             setForensicRows(rows);
             setExplanation("");
@@ -120,9 +121,10 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
             const rows = (parsedAnswer.specimens || []).map((row: any) => ({
               questionSpecimen: row.questionSpecimen || "",
               standardSpecimen: row.standardSpecimen || "",
-              points: row.points || 1
+              points: row.points || 1,
+              pointType: row.pointType || "each"
             }));
-            setForensicRows(rows.length > 0 ? rows : [{ questionSpecimen: "", standardSpecimen: "", points: 1 }]);
+            setForensicRows(rows.length > 0 ? rows : [{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" }]);
             
             // Set explanation if it exists
             if (parsedAnswer.explanation) {
@@ -308,7 +310,8 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
         specimens: forensicRows.map(row => ({
           questionSpecimen: row.questionSpecimen,
           standardSpecimen: row.standardSpecimen,
-          points: Number(row.points) || 1
+          points: Number(row.points) || 1,
+          pointType: row.pointType || "each"
         })),
         explanation: {
           text: explanation,
@@ -676,7 +679,15 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
               <div className="flex items-center justify-between">
                 <Label>Answer Key Table</Label>
                 <div className="text-sm text-muted-foreground">
-                  Total Points: {forensicRows.reduce((sum, row) => sum + (Number(row.points) || 1), 0) + (Number(explanationPoints) || 0)}
+                  Total Points: {forensicRows.reduce((sum, row) => {
+                    const rowPoints = Number(row.points) || 1;
+                    const pointType = row.pointType || "both";
+                    if (pointType === "each") {
+                      return sum + (rowPoints * 2); // Multiply by 2 for typical comparison (question vs standard)
+                    } else {
+                      return sum + rowPoints;
+                    }
+                  }, 0)}
                 </div>
               </div>
               
@@ -687,6 +698,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                       <th className="border p-2">Question Specimen</th>
                       <th className="border p-2">Standard Specimen</th>
                       <th className="border p-2 w-24">Points</th>
+                      <th className="border p-2 w-32">Point Type</th>
                       <th className="border p-2">Actions</th>
                     </tr>
                   </thead>
@@ -721,6 +733,17 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                             placeholder="Points"
                             title="Points for this row"
                           />
+                        </td>
+                        <td className="border p-2">
+                          <select
+                            className="w-full border px-2 py-1 text-xs"
+                            value={row.pointType || "both"}
+                            onChange={e => handleForensicRowChange(idx, "pointType", e.target.value)}
+                            title="each = points per correct answer, both = points only if all answers correct"
+                          >
+                            <option value="each">for each correct</option>
+                            <option value="both">if both correct</option>
+                          </select>
                         </td>
                         <td className="border p-2">
                           <Button 

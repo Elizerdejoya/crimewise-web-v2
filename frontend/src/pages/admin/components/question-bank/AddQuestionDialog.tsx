@@ -56,7 +56,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   const [questionPreviews, setQuestionPreviews] = useState<string[]>([]);
   const [standardPreviews, setStandardPreviews] = useState<string[]>([]);
   const [forensicAnswerRows, setForensicAnswerRows] = useState([
-    { questionSpecimen: "", standardSpecimen: "", points: 1 },
+    { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" },
   ]);
   const [explanation, setExplanation] = useState("");
   const [explanationPoints, setExplanationPoints] = useState(1);
@@ -172,7 +172,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     if (questionImageInputRef.current) questionImageInputRef.current.value = "";
     if (standardImageInputRef.current) standardImageInputRef.current.value = "";
     // reset forensic rows to a single default row when clearing images
-    setForensicAnswerRows([{ questionSpecimen: "", standardSpecimen: "", points: 1 }]);
+    setForensicAnswerRows([{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" }]);
   };
 
   const handleForensicRowChange = (
@@ -192,10 +192,14 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       forensicAnswerRows.length > 0
         ? forensicAnswerRows[forensicAnswerRows.length - 1].points
         : 1;
+    const lastRowPointType =
+      forensicAnswerRows.length > 0
+        ? forensicAnswerRows[forensicAnswerRows.length - 1].pointType
+        : "each";
 
     setForensicAnswerRows((rows) => [
       ...rows,
-      { questionSpecimen: "", standardSpecimen: "", points: lastRowPoints },
+      { questionSpecimen: "", standardSpecimen: "", points: lastRowPoints, pointType: lastRowPointType },
     ]);
   };
 
@@ -220,7 +224,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     setQuestionPreviews([]);
     setStandardPreviews([]);
     setForensicAnswerRows([
-      { questionSpecimen: "", standardSpecimen: "", points: 1 },
+      { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" },
     ]);
     setExplanation("");
     setExplanationPoints(1);
@@ -338,6 +342,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         questionSpecimen: row.questionSpecimen,
         standardSpecimen: row.standardSpecimen,
         points: Number(row.points) || 1,
+        pointType: row.pointType || "each",
       })),
       explanation: {
         text: explanation,
@@ -651,10 +656,17 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
               <Label>Answer Key Table</Label>
               <div className="text-sm text-muted-foreground">
                 Total Points:{" "}
-                {forensicAnswerRows.reduce(
-                  (sum, row) => sum + (Number(row.points) || 1),
-                  0
-                ) + (Number(explanationPoints) || 0)}
+                {forensicAnswerRows.reduce((sum, row) => {
+                  const rowPoints = Number(row.points) || 1;
+                  const pointType = row.pointType || "both";
+                  // For "each" type, we need to estimate columns (typically 2: questionSpecimen, standardSpecimen, plus user inputs)
+                  // We'll use a conservative estimate of 1 column minimum
+                  if (pointType === "each") {
+                    return sum + (rowPoints * 2); // Multiply by 2 for typical comparison (question vs standard)
+                  } else {
+                    return sum + rowPoints;
+                  }
+                }, 0)}
               </div>
             </div>
 
@@ -666,6 +678,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                     <th className="border p-2">Question Specimen</th>
                     <th className="border p-2">Standard Specimen</th>
                     <th className="border p-2 w-24">Points</th>
+                    <th className="border p-2 w-32">Point Type</th>
                     <th className="border p-2">Actions</th>
                   </tr>
                 </thead>
@@ -721,6 +734,23 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                           placeholder="Points"
                           title="Points for this row"
                         />
+                      </td>
+                      <td className="border p-2">
+                        <select
+                          className="w-full border px-2 py-1 text-xs"
+                          value={row.pointType || "both"}
+                          onChange={(e) =>
+                            handleForensicRowChange(
+                              idx,
+                              "pointType",
+                              e.target.value
+                            )
+                          }
+                          title="each = points per correct answer, both = points only if all answers correct"
+                        >
+                          <option value="each">for each correct</option>
+                          <option value="both">if both correct</option>
+                        </select>
                       </td>
                       <td className="border p-2">
                         <Button
