@@ -3,7 +3,10 @@ const { GoogleGenAI } = require('@google/genai');
 const apiKeyManager = require('./apiKeyManager');
 
 async function gradeStudent(studentId, examId, teacherFindings, studentFindings, apiKeyObj = null) {
-  console.log('[GRADER] Starting grading for student', studentId, 'exam', examId);
+  console.log('[GRADER] ========== START GRADING ==========');
+  console.log('[GRADER] Student:', studentId, '| Exam:', examId);
+  console.log('[GRADER] Teacher findings length:', String(teacherFindings).length, 'chars');
+  console.log('[GRADER] Student findings length:', String(studentFindings).length, 'chars');
   
   try {
     // PRE-CHECK: If answers are identical/nearly identical, return perfect score immediately
@@ -130,6 +133,7 @@ Return ONLY valid JSON with these exact fields:
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         // Wrap the generateContent call with a timeout
+        console.log(`[GRADER] Making API call (attempt ${attempt}/${maxRetries}) with key index ${keyIndex}`);
         const generatePromise = genAI.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [
@@ -144,7 +148,7 @@ Return ONLY valid JSON with these exact fields:
             setTimeout(() => reject(new Error('Gemini API timeout after 60s')), timeoutMs)
           )
         ]);
-        console.log('[GRADER] Gemini API call succeeded on attempt', attempt);
+        console.log('[GRADER] Gemini API call succeeded on attempt', attempt, '- Grade saved for student', studentId);
         break;
       } catch (callErr) {
         // Inspect for rate-limit or server errors
@@ -473,6 +477,8 @@ Return ONLY valid JSON with these exact fields:
       console.error('[GRADER] Failed to save parsing error grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }
     throw err;
+  } finally {
+    console.log('[GRADER] ========== END GRADING ==========');
   }
 }
 
