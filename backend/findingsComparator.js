@@ -27,10 +27,12 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
     const teacher = String(teacherFindings || '').trim();
     const student = String(studentFindings || '').trim();
 
+    let result = null;
+
     // Empty check
     if (!student) {
       console.log('[COMPARATOR] Empty student findings');
-      return {
+      result = {
         score: 0,
         accuracy: 0,
         completeness: 0,
@@ -38,76 +40,78 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
         objectivity: 0,
         feedback: 'No findings submitted. Please provide your analysis.'
       };
-    }
-
-    // Normalize for comparison
-    const normalize = (text) => {
-      return text
-        .toLowerCase()
-        .trim()
-        .replace(/\s+/g, ' '); // normalize whitespace
-    };
-
-    const teacherNorm = normalize(teacher);
-    const studentNorm = normalize(student);
-
-    // Check for exact match
-    if (teacherNorm === studentNorm) {
-      console.log('[COMPARATOR] Exact match detected');
-      return {
-        score: 100,
-        accuracy: 100,
-        completeness: 100,
-        clarity: 100,
-        objectivity: 100,
-        feedback: 'Perfect! Your findings exactly match the teacher\'s answer. Excellent work!'
+    } else {
+      // Normalize for comparison
+      const normalize = (text) => {
+        return text
+          .toLowerCase()
+          .trim()
+          .replace(/\s+/g, ' '); // normalize whitespace
       };
+
+      const teacherNorm = normalize(teacher);
+      const studentNorm = normalize(student);
+
+      // Check for exact match
+      if (teacherNorm === studentNorm) {
+        console.log('[COMPARATOR] Exact match detected');
+        result = {
+          score: 100,
+          accuracy: 100,
+          completeness: 100,
+          clarity: 100,
+          objectivity: 100,
+          feedback: 'Perfect! Your findings exactly match the teacher\'s answer. Excellent work!'
+        };
+      } else {
+        // Calculate similarity using Levenshtein distance
+        const similarity = stringSimilarity.compareTwoStrings(teacherNorm, studentNorm);
+        const score = Math.round(similarity * 100);
+
+        console.log('[COMPARATOR] Similarity score:', similarity.toFixed(3), '→', score + '%');
+
+        // Map score to components (all equal for simplicity)
+        const accuracy = calculateAccuracy(student, teacher, similarity);
+        const completeness = calculateCompleteness(student, teacher);
+        const clarity = calculateClarity(student);
+        const objectivity = calculateObjectivity(student);
+
+        // Calculate overall as weighted average
+        const overall = Math.round(
+          (accuracy * 0.35 + completeness * 0.35 + clarity * 0.20 + objectivity * 0.10)
+        );
+
+        // Generate feedback
+        const feedback = generateFeedback(score, student.length, teacher.length);
+
+        console.log('[COMPARATOR] Scores - Accuracy:', accuracy, '| Completeness:', completeness, '| Clarity:', clarity, '| Objectivity:', objectivity);
+        console.log('[COMPARATOR] Overall score:', overall);
+
+        result = {
+          score: overall,
+          accuracy,
+          completeness,
+          clarity,
+          objectivity,
+          feedback,
+          raw_response: `Similarity: ${similarity.toFixed(3)} (${score}%)`
+        };
+      }
     }
 
-    // Calculate similarity using Levenshtein distance
-    const similarity = stringSimilarity.compareTwoStrings(teacherNorm, studentNorm);
-    const score = Math.round(similarity * 100);
-
-    console.log('[COMPARATOR] Similarity score:', similarity.toFixed(3), '→', score + '%');
-
-    // Map score to components (all equal for simplicity)
-    const accuracy = calculateAccuracy(student, teacher, similarity);
-    const completeness = calculateCompleteness(student, teacher);
-    const clarity = calculateClarity(student);
-    const objectivity = calculateObjectivity(student);
-
-    // Calculate overall as weighted average
-    const overall = Math.round(
-      (accuracy * 0.35 + completeness * 0.35 + clarity * 0.20 + objectivity * 0.10)
-    );
-
-    // Generate feedback
-    const feedback = generateFeedback(score, student.length, teacher.length);
-
-    console.log('[COMPARATOR] Scores - Accuracy:', accuracy, '| Completeness:', completeness, '| Clarity:', clarity, '| Objectivity:', objectivity);
-    console.log('[COMPARATOR] Overall score:', overall);
-
-    const result = {
-      score: overall,
-      accuracy,
-      completeness,
-      clarity,
-      objectivity,
-      feedback,
-      raw_response: `Similarity: ${similarity.toFixed(3)} (${score}%)`
-    };
-
-    // Save to database
+    // Save to database (ALL paths save now)
     try {
+      console.log('[COMPARATOR] Saving grade to database - Student:', studentId, '| Exam:', examId, '| Score:', result.score);
       await db.sql`
         INSERT INTO ai_grades 
         (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) 
-        VALUES (${studentId}, ${examId}, ${overall}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity}, ${feedback}, ${'LOCAL_COMPARISON'})
+        VALUES (${studentId}, ${examId}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${'LOCAL_COMPARISON'})
       `;
-      console.log('[COMPARATOR] Grade saved for student', studentId);
+      console.log('[COMPARATOR] Grade saved successfully for student', studentId);
     } catch (dbErr) {
       console.error('[COMPARATOR] Failed to save grade:', dbErr && dbErr.message);
-      // Still return result even if save fails
+      // Log the error but still return result
+      console.error('[COMPARATOR] DB Error details:', dbErr);
     }
 
     return result;
