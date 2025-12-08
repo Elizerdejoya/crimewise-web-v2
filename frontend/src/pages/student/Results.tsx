@@ -663,38 +663,10 @@ const Results = () => {
       printWindow.close();
     };
 
-  // Fetch ai_queue status rows for a list of results so we can show requeue UI
+  // With instant grading, we don't need to fetch queue status anymore
   const fetchAiQueueForResults = async (resultsArr: any[]) => {
-    if (!Array.isArray(resultsArr) || resultsArr.length === 0) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const promises = resultsArr.map(async (r) => {
-      const sid = r.student_id || r.studentId;
-      const eid = r.exam_id || r.examId;
-      if (!sid || !eid) return null;
-      const key = `${sid}_${eid}`;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/ai-grader/queue/${sid}/${eid}`, { headers: getAuthHeaders() });
-        if (!res.ok) return [key, null] as [string, any];
-        const data = await res.json();
-        return [key, data] as [string, any];
-      } catch (e) {
-        return [key, null] as [string, any];
-      }
-    });
-
-    try {
-      const settled = await Promise.all(promises);
-      const map: Record<string, any> = {};
-      settled.forEach((item) => {
-        if (!item) return;
-        const [k, v] = item as [string, any];
-        if (k) map[k] = v;
-      });
-      setAiQueueMap(prev => ({ ...prev, ...map }));
-    } catch (e) {
-      // ignore
-    }
+    // Queue checking is no longer needed - grading is instant
+    return;
   };
 
   const handleReload = () => {
@@ -702,35 +674,8 @@ const Results = () => {
   };
 
   const handleRequeueAiGrade = async (studentId: number | string, examId: number | string) => {
-    if (!studentId || !examId) return;
-    const key = `${studentId}_${examId}`;
-    setRequeueLoading(prev => ({ ...prev, [key]: true }));
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/ai-grader/requeue`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ studentId, examId }),
-      });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => 'Requeue failed');
-        toast({ title: 'Requeue failed', description: txt, variant: 'destructive' });
-        return;
-      }
-      toast({ title: 'Requeue requested', description: 'AI grade will be retried shortly.', variant: 'default' });
-      // refresh queue status for this item
-      try {
-        const qRes = await fetch(`${API_BASE_URL}/api/ai-grader/queue/${studentId}/${examId}`, { headers: getAuthHeaders() });
-        if (qRes.ok) {
-          const qData = await qRes.json();
-          setAiQueueMap(prev => ({ ...prev, [key]: qData }));
-        }
-      } catch (e) { /* ignore */ }
-    } catch (e) {
-      console.error('Requeue error', e);
-      toast({ title: 'Error', description: 'Failed to request requeue.', variant: 'destructive' });
-    } finally {
-      setRequeueLoading(prev => ({ ...prev, [key]: false }));
-    }
+    // Requeue is no longer needed - grading is instant
+    toast({ title: 'No requeue needed', description: 'AI grades are instant with the new system.', variant: 'default' });
   };
 
   // Helper to fetch a single AI grade and return numeric score or null
