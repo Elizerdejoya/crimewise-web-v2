@@ -38,6 +38,29 @@ async function initializeSchema() {
   try {
     console.log('[DB] Checking PostgreSQL schema...');
 
+    // Check if ai_grades table exists
+    const checkGrades = await client.query(`
+      SELECT EXISTS(
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'ai_grades'
+      )
+    `);
+    
+    // If ai_grades exists, try to migrate it (remove problematic foreign key)
+    if (checkGrades.rows[0].exists) {
+      console.log('[DB] ai_grades table exists, checking for constraints to migrate...');
+      try {
+        // Drop foreign key constraint if it exists
+        await client.query(`
+          ALTER TABLE ai_grades 
+          DROP CONSTRAINT IF EXISTS ai_grades_student_id_fkey
+        `);
+        console.log('[DB] Removed foreign key constraint from ai_grades');
+      } catch (migrationErr) {
+        console.log('[DB] No migration needed or already migrated:', migrationErr.message);
+      }
+    }
+
     // Check if ai_queue table exists
     const checkTable = await client.query(`
       SELECT EXISTS(
@@ -68,8 +91,7 @@ async function initializeSchema() {
         feedback TEXT,
         raw_response TEXT,
         api_key_index INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     console.log('[DB] Created ai_grades table');
