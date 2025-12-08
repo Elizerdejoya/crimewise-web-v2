@@ -59,6 +59,19 @@ async function initializeSchema() {
       } catch (migrationErr) {
         console.log('[DB] No migration needed or already migrated:', migrationErr.message);
       }
+      
+      // Add UNIQUE constraint if not exists
+      try {
+        await client.query(`
+          ALTER TABLE ai_grades 
+          ADD CONSTRAINT ai_grades_student_exam_unique UNIQUE(student_id, exam_id)
+        `);
+        console.log('[DB] Added UNIQUE constraint to ai_grades');
+      } catch (constraintErr) {
+        if (!constraintErr.message.includes('already exists')) {
+          console.log('[DB] Could not add UNIQUE constraint:', constraintErr.message);
+        }
+      }
     }
 
     // Check if ai_queue table exists
@@ -91,7 +104,8 @@ async function initializeSchema() {
         feedback TEXT,
         raw_response TEXT,
         api_key_index INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, exam_id)
       )
     `);
     console.log('[DB] Created ai_grades table');

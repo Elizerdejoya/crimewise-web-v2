@@ -1,25 +1,77 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const comparator = require('../findingsComparator');
+const stringSimilarity = require('string-similarity');
+
+// Helper functions for grading
+function calculateAccuracy(student, teacher, baseSimilarity) {
+  const studentWords = new Set((student || '').toLowerCase().match(/\b\w{3,}\b/g) || []);
+  const teacherWords = new Set((teacher || '').toLowerCase().match(/\b\w{3,}\b/g) || []);
+  if (teacherWords.size === 0) return 100;
+  const common = [...teacherWords].filter(w => studentWords.has(w)).length;
+  const coverage = common / teacherWords.size;
+  const accuracy = (coverage * 0.5 + baseSimilarity * 0.5) * 100;
+  return Math.round(Math.min(accuracy, 100));
+}
+
+function calculateCompleteness(student, teacher) {
+  const studentLen = (student || '').split(/\s+/).length;
+  const teacherLen = (teacher || '').split(/\s+/).length;
+  if (teacherLen === 0) return 100;
+  const lengthRatio = Math.min(studentLen / teacherLen, 1);
+  const teacherKeys = (teacher || '').toLowerCase().match(/\b\w{5,}\b/g) || [];
+  const studentText = (student || '').toLowerCase();
+  const keysCovered = teacherKeys.filter(k => studentText.includes(k)).length;
+  const keyCoverage = teacherKeys.length > 0 ? keysCovered / teacherKeys.length : 1;
+  const completeness = (lengthRatio * 0.4 + keyCoverage * 0.6) * 100;
+  return Math.round(Math.min(completeness, 100));
+}
+
+function calculateClarity(student) {
+  const text = student || '';
+  const sentences = text.match(/[.!?]/g) || [];
+  const words = text.match(/\b\w+\b/g) || [];
+  if (sentences.length === 0 || words.length === 0) return 60;
+  const avgWordsPerSentence = words.length / sentences.length;
+  let clarity = 100;
+  if (avgWordsPerSentence < 5 || avgWordsPerSentence > 25) clarity = 75;
+  else if (avgWordsPerSentence < 8 || avgWordsPerSentence > 20) clarity = 85;
+  if (text.includes('\n') || text.includes('-') || text.includes(':')) clarity = Math.min(clarity + 5, 100);
+  return clarity;
+}
+
+function calculateObjectivity(student) {
+  const text = (student || '').toLowerCase();
+  const subjectiveIndicators = ['i think', 'i believe', 'i feel', 'my opinion', 'in my view', 'seems to me', 'in my experience', 'very', 'extremely', 'definitely', 'certainly'];
+  const subjectiveCount = subjectiveIndicators.filter(indicator => text.includes(indicator)).length;
+  const objectivity = Math.max(100 - (subjectiveCount * 10), 40);
+  return objectivity;
+}
+
+function generateFeedback(score, studentLen, teacherLen) {
+  let feedback = '';
+  if (score >= 90) feedback = 'Excellent! Your findings are nearly identical to the expected answer. Outstanding work!';
+  else if (score >= 80) feedback = 'Very good! Your findings closely match the expected answer with only minor differences.';
+  else if (score >= 70) feedback = 'Good work! Your findings cover the main points. Consider adding more detail to match the expected answer more closely.';
+  else if (score >= 60) feedback = 'Fair effort. Your findings have the right idea but are missing some important details. Compare with the expected answer and revise.';
+  else if (score >= 50) feedback = 'Needs improvement. Your findings are significantly different from the expected answer. Review the correct answer and try again.';
+  else feedback = 'Please review the expected answer carefully and resubmit with more accurate findings.';
+  if (studentLen < teacherLen * 0.5) feedback += ' Your response is quite short - consider adding more detail.';
+  else if (studentLen > teacherLen * 2) feedback += ' Your response is very long - try to be more concise.';
+  return feedback.trim();
+}
 
 // POST /api/ai-grader/submit
 // Submit findings for instant grading using local string similarity
 router.post('/submit', async (req, res) => {
-
   try {
     console.log('[AI-GRADER][SUBMIT] ========== REQUEST RECEIVED ==========');
-    console.log('[AI-GRADER][SUBMIT] Body:', JSON.stringify(req.body).substring(0, 200));
-    
     const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
     
-    console.log('[AI-GRADER][SUBMIT] studentId:', studentId, 'type:', typeof studentId);
-    console.log('[AI-GRADER][SUBMIT] examId:', examId, 'type:', typeof examId);
-    console.log('[AI-GRADER][SUBMIT] studentFindings length:', (studentFindings || '').length);
-    console.log('[AI-GRADER][SUBMIT] teacherFindings:', String(reqTeacherFindings || '').substring(0, 100));
+    console.log('[AI-GRADER][SUBMIT] studentId:', studentId, 'examId:', examId);
     
     if (!studentId || !examId || !studentFindings) {
-      console.error('[AI-GRADER][SUBMIT] Validation failed - missing required fields');
+      console.error('[AI-GRADER][SUBMIT] Validation failed');
       return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
     }
 
@@ -44,23 +96,81 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // Instant grading using local string similarity (no API calls, no waiting)
-    console.log('[AI-GRADER][SUBMIT] Processing instantly for student', studentId, 'exam', examId);
-    const result = await comparator.compareFindings(
-      Number(studentId), 
-      Number(examId), 
-      teacherFindings || '', 
-      String(studentFindings)
-    );
+    // Normalize and compare
+    const teacher = String(teacherFindings || '').trim();
+    const student = String(studentFindings || '').trim();
+    
+    let result = null;
+    
+    if (!student) {
+      result = {
+        score: 0,
+        accuracy: 0,
+        completeness: 0,
+        clarity: 0,
+        objectivity: 0,
+        feedback: 'No findings submitted. Please provide your analysis.',
+        raw_response: 'EMPTY'
+      };
+    } else {
+      const normalize = (text) => text.toLowerCase().trim().replace(/\s+/g, ' ');
+      const teacherNorm = normalize(teacher);
+      const studentNorm = normalize(student);
 
-    if (!result) {
-      console.error('[AI-GRADER][SUBMIT] Comparator returned null/undefined result');
-      return res.status(500).json({ error: 'Grading produced invalid result' });
+      if (teacherNorm === studentNorm) {
+        result = {
+          score: 100,
+          accuracy: 100,
+          completeness: 100,
+          clarity: 100,
+          objectivity: 100,
+          feedback: 'Perfect! Your findings exactly match the teacher\'s answer. Excellent work!',
+          raw_response: 'EXACT_MATCH'
+        };
+      } else {
+        const similarity = stringSimilarity.compareTwoStrings(teacherNorm, studentNorm);
+        const accuracy = calculateAccuracy(student, teacher, similarity);
+        const completeness = calculateCompleteness(student, teacher);
+        const clarity = calculateClarity(student);
+        const objectivity = calculateObjectivity(student);
+        const overall = Math.round((accuracy * 0.35 + completeness * 0.35 + clarity * 0.20 + objectivity * 0.10));
+        const feedback = generateFeedback(overall, student.length, teacher.length);
+        
+        result = {
+          score: overall,
+          accuracy,
+          completeness,
+          clarity,
+          objectivity,
+          feedback,
+          raw_response: `SIMILARITY: ${(similarity * 100).toFixed(1)}%`
+        };
+      }
     }
 
-    console.log('[AI-GRADER][SUBMIT] Grading completed instantly. Score:', result.score);
+    // SAVE TO DATABASE DIRECTLY
+    console.log('[AI-GRADER][SUBMIT] Saving to database:', { sid: studentId, eid: examId, score: result.score });
+    try {
+      await db.sql`
+        INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
+        VALUES (${Number(studentId)}, ${Number(examId)}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${result.raw_response})
+        ON CONFLICT (student_id, exam_id) DO UPDATE SET
+          score = ${result.score},
+          accuracy = ${result.accuracy},
+          completeness = ${result.completeness},
+          clarity = ${result.clarity},
+          objectivity = ${result.objectivity},
+          feedback = ${result.feedback},
+          raw_response = ${result.raw_response}
+      `;
+      console.log('[AI-GRADER][SUBMIT] Grade saved successfully');
+    } catch (dbErr) {
+      console.error('[AI-GRADER][SUBMIT] DB SAVE ERROR:', dbErr && dbErr.message);
+      console.error('[AI-GRADER][SUBMIT] Stack:', dbErr && dbErr.stack);
+      throw dbErr;
+    }
 
-    // Return 200 OK with immediate result
+    // Return result
     res.status(200).json({ 
       message: 'Grading completed',
       score: result.score,
@@ -71,8 +181,7 @@ router.post('/submit', async (req, res) => {
       objectivity: result.objectivity
     });
   } catch (err) {
-    console.error('[AI-GRADER][SUBMIT] *** ERROR ***');
-    console.error('[AI-GRADER][SUBMIT] Error message:', err && err.message);
+    console.error('[AI-GRADER][SUBMIT] FATAL ERROR:', err && err.message);
     console.error('[AI-GRADER][SUBMIT] Stack:', err && err.stack);
     res.status(500).json({ error: 'Failed to grade findings', details: err && err.message ? err.message : 'Unknown error' });
   }
@@ -82,14 +191,22 @@ router.post('/submit', async (req, res) => {
 router.get('/result/:studentId/:examId', async (req, res) => {
   try {
     const { studentId, examId } = req.params;
+    console.log('[AI-GRADER][GET-RESULT] Fetching grade for student:', studentId, 'exam:', examId);
+    
     const row = await db.sql`SELECT * FROM ai_grades WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`;
-    // db.sql returns an array-like object; coerce
     const result = Array.isArray(row) ? row[0] : row;
-    if (!result) return res.status(404).json({ error: 'No AI grade found' });
+    
+    if (!result) {
+      console.log('[AI-GRADER][GET-RESULT] No grade found for student', studentId, 'exam', examId);
+      return res.status(404).json({ error: 'No AI grade found' });
+    }
+    
+    console.log('[AI-GRADER][GET-RESULT] Found grade:', result);
     res.json(result);
   } catch (err) {
-    console.error('[AI-GRADER][GET-RESULT] Error:', err && err.message ? err.message : err);
-    res.status(500).json({ error: 'Failed to fetch AI grade' });
+    console.error('[AI-GRADER][GET-RESULT] Database error:', err && err.message ? err.message : err);
+    console.error('[AI-GRADER][GET-RESULT] Stack:', err && err.stack);
+    res.status(500).json({ error: 'Failed to fetch AI grade', details: err && err.message });
   }
 });
 
