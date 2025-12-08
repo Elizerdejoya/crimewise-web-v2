@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const aiWorker = require('../ai-worker');
+const comparator = require('../findingsComparator');
 
 // POST /api/ai-grader/submit
-// Enqueue a job into the DB-backed ai_queue
+// Submit findings for instant grading using local string similarity
 router.post('/submit', async (req, res) => {
 
   try {
@@ -35,48 +35,30 @@ router.post('/submit', async (req, res) => {
       }
     }
 
-    // SQLite Cloud 30-connection limit: use SHORT retry windows to release connections fast
-    // Retries 5×50ms = max 250ms total per operation, so connections don't hold long
-    await db.runWithRetry(
-      () => db.sql`INSERT INTO ai_queue (student_id, exam_id, teacher_findings, student_findings, status) VALUES (${Number(studentId)}, ${Number(examId)}, ${String(teacherFindings)}, ${String(studentFindings)}, 'pending')`,
-      { retries: 5, baseDelay: 50 }
+    // Instant grading using local string similarity (no API calls, no waiting)
+    console.log('[AI-GRADER][SUBMIT] Processing instantly for student', studentId, 'exam', examId);
+    const result = await comparator.compareFindings(
+      Number(studentId), 
+      Number(examId), 
+      teacherFindings || '', 
+      String(studentFindings)
     );
 
-    // Find the inserted job id to return to the client (also short retry)
-    const inserted = await db.runWithRetry(
-      () => db.sql`SELECT id FROM ai_queue WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)} ORDER BY id DESC LIMIT 1`,
-      { retries: 5, baseDelay: 50 }
-    );
-    const jobRow = Array.isArray(inserted) ? inserted[0] : inserted;
-    const jobId = jobRow ? jobRow.id : null;
+    console.log('[AI-GRADER][SUBMIT] Grading completed instantly. Score:', result.score);
 
-    // Kick the worker once in-process to reduce latency (non-blocking, local dev only)
-    try {
-      if (aiWorker && aiWorker.runOnce) {
-        aiWorker.runOnce(1).catch((e) => console.error('[AI-GRADER] aiWorker.runOnce error:', e && e.message ? e.message : e));
-      }
-    } catch (e) {
-      // Ignore errors from trying to trigger worker; job remains queued
-    }
-
-    // Return 202 Accepted (job queued for processing)
-    res.status(202).json({ message: 'Queued for AI grading', jobId });
+    // Return 200 OK with immediate result
+    res.status(200).json({ 
+      message: 'Grading completed',
+      score: result.score,
+      feedback: result.feedback,
+      accuracy: result.accuracy,
+      completeness: result.completeness,
+      clarity: result.clarity,
+      objectivity: result.objectivity
+    });
   } catch (err) {
     console.error('[AI-GRADER][SUBMIT] Error:', err && err.stack ? err.stack : err.message || err);
-    res.status(500).json({ error: 'Failed to submit for AI grading', details: err && err.message ? err.message : 'Unknown error' });
-  }
-});
-
-// POST /api/ai-grader/process-pending
-// Process up to `limit` pending jobs (default 1). Intended to be called by a scheduler.
-router.post('/process-pending', async (req, res) => {
-  try {
-    const limit = Number(req.query.limit || 1);
-    const processed = await aiWorker.runOnce(limit);
-    res.json({ processed });
-  } catch (err) {
-    console.error('[AI-GRADER][PROCESS-PENDING] Error:', err && err.message ? err.message : err);
-    res.status(500).json({ error: 'Failed to process pending jobs' });
+    res.status(500).json({ error: 'Failed to grade findings', details: err && err.message ? err.message : 'Unknown error' });
   }
 });
 
