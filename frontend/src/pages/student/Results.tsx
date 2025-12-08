@@ -108,6 +108,27 @@ const Results = () => {
     fetchStudentResults();
   }, []);
 
+  // Poll for pending AI grades every 5 seconds to show updates as they complete
+  useEffect(() => {
+    const pollInterval = setInterval(() => {
+      if (results && results.length > 0) {
+        // Check for results that don't have AI grades yet
+        const pendingGrades = results
+          .filter(r => {
+            const key = `${r.student_id || r.studentId}_${r.exam_id || r.examId}`;
+            return aiScores[key] === undefined; // undefined = not yet fetched
+          });
+        
+        if (pendingGrades.length > 0) {
+          // Refetch AI grades for pending items
+          fetchAiGradesForResults(pendingGrades);
+        }
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [results, aiScores]);
+
   // Helper function to safely call trim on a value
   const safeString = (value: any): string => {
     if (value === null || value === undefined) return "";
