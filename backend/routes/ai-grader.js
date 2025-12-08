@@ -44,6 +44,11 @@ router.post('/submit', async (req, res) => {
       String(studentFindings)
     );
 
+    if (!result) {
+      console.error('[AI-GRADER][SUBMIT] Comparator returned null/undefined result');
+      return res.status(500).json({ error: 'Grading produced invalid result' });
+    }
+
     console.log('[AI-GRADER][SUBMIT] Grading completed instantly. Score:', result.score);
 
     // Return 200 OK with immediate result
@@ -57,7 +62,9 @@ router.post('/submit', async (req, res) => {
       objectivity: result.objectivity
     });
   } catch (err) {
-    console.error('[AI-GRADER][SUBMIT] Error:', err && err.stack ? err.stack : err.message || err);
+    console.error('[AI-GRADER][SUBMIT] *** ERROR ***');
+    console.error('[AI-GRADER][SUBMIT] Error message:', err && err.message);
+    console.error('[AI-GRADER][SUBMIT] Stack:', err && err.stack);
     res.status(500).json({ error: 'Failed to grade findings', details: err && err.message ? err.message : 'Unknown error' });
   }
 });

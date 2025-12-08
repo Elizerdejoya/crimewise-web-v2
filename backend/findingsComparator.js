@@ -102,16 +102,20 @@ async function compareFindings(studentId, examId, teacherFindings, studentFindin
     // Save to database (ALL paths save now)
     try {
       console.log('[COMPARATOR] Saving grade to database - Student:', studentId, '| Exam:', examId, '| Score:', result.score);
-      await db.sql`
+      const insertResult = await db.sql`
         INSERT INTO ai_grades 
         (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response) 
         VALUES (${studentId}, ${examId}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${'LOCAL_COMPARISON'})
       `;
-      console.log('[COMPARATOR] Grade saved successfully for student', studentId);
+      console.log('[COMPARATOR] Grade saved successfully for student', studentId, '| Result:', insertResult);
     } catch (dbErr) {
-      console.error('[COMPARATOR] Failed to save grade:', dbErr && dbErr.message);
-      // Log the error but still return result
-      console.error('[COMPARATOR] DB Error details:', dbErr);
+      console.error('[COMPARATOR] *** CRITICAL: Failed to save grade ***');
+      console.error('[COMPARATOR] Error message:', dbErr && dbErr.message);
+      console.error('[COMPARATOR] Error code:', dbErr && dbErr.code);
+      console.error('[COMPARATOR] Error details:', dbErr);
+      console.error('[COMPARATOR] Stack:', dbErr && dbErr.stack);
+      // THROW the error so it propagates to the API route
+      throw new Error(`Database save failed: ${dbErr && dbErr.message ? dbErr.message : 'Unknown error'}`);
     }
 
     return result;
