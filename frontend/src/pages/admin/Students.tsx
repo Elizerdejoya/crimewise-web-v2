@@ -441,10 +441,11 @@ const StudentsPage = () => {
       selected.map((s) => ({
         id: s.id,
         name: s.name || "",
-        email: s.email,
+        email: s.email || "",
         studentId: s.student_id || "",
         class_id: s.class_id?.toString() || "",
         course_id: s.course_id?.toString() || "",
+        password: s.password || "",
       }))
     );
     setIsEditModalOpen(true);
@@ -1087,7 +1088,7 @@ const StudentsPage = () => {
                           <TableCell className="min-w-[60px]">{row.id}</TableCell>
                           <TableCell className="min-w-[150px]">
                             <Input
-                              value={(editRows[idx]?.name ?? row.name) || ""}
+                              value={editRows[idx]?.name || ""}
                               onChange={(e) =>
                                 setEditRows((rows) => {
                                   const newRows = [...rows];
@@ -1104,7 +1105,7 @@ const StudentsPage = () => {
                           </TableCell>
                           <TableCell className="min-w-[180px]">
                             <Input
-                              value={editRows[idx]?.email ?? row.email}
+                              value={editRows[idx]?.email || ""}
                               onChange={(e) =>
                                 setEditRows((rows) => {
                                   const newRows = [...rows];
@@ -1121,7 +1122,7 @@ const StudentsPage = () => {
                           </TableCell>
                           <TableCell className="min-w-[120px]">
                             <Input
-                              value={editRows[idx]?.studentId ?? row.student_id}
+                              value={editRows[idx]?.studentId || ""}
                               onChange={(e) =>
                                 setEditRows((rows) => {
                                   const newRows = [...rows];
@@ -1139,7 +1140,7 @@ const StudentsPage = () => {
                           <TableCell className="min-w-[120px]">
                             <Input
                               type="password"
-                              value={editRows[idx]?.password ?? row.password}
+                              value={editRows[idx]?.password || ""}
                               onChange={(e) =>
                                 setEditRows((rows) => {
                                   const newRows = [...rows];
@@ -1226,16 +1227,15 @@ const StudentsPage = () => {
               </Button>
               <Button
                 onClick={async () => {
-                  // Validate - check both editRows and the original data from selected students
-                  const selectedStudents = students.filter((s) => selectedIds.includes(s.id));
-                  const hasInvalidData = editRows.some((r, idx) => {
-                    const origStudent = selectedStudents[idx];
-                    const name = (r.name?.trim() || origStudent?.name?.trim()) || "";
-                    const email = (r.email?.trim() || origStudent?.email?.trim()) || "";
-                    return !name || !email || !r.class_id;
-                  });
-
-                  if (hasInvalidData) {
+                  // Validate - check that required fields have values
+                  if (
+                    editRows.some(
+                      (r) =>
+                        !r.name?.trim() ||
+                        !r.email?.trim() ||
+                        !r.class_id
+                    )
+                  ) {
                     toast({
                       title: "Validation Error",
                       description: "All student names and emails are required.",
@@ -1245,20 +1245,16 @@ const StudentsPage = () => {
                   }
                   // Send to backend (bulk update)
                   try {
-                    const selectedStudents = students.filter((s) => selectedIds.includes(s.id));
                     const updateData = {
-                      students: editRows.map((r, idx) => {
-                        const origStudent = selectedStudents[idx];
-                        return {
-                          id: r.id,
-                          name: r.name?.trim() || origStudent?.name || "",
-                          email: r.email?.trim() || origStudent?.email || "",
-                          studentId: r.studentId || origStudent?.student_id || "",
-                          class_id: r.class_id,
-                          course_id: r.course_id,
-                          role: "student",
-                        };
-                      }),
+                      students: editRows.map((r) => ({
+                        id: r.id,
+                        name: r.name,
+                        email: r.email,
+                        studentId: r.studentId,
+                        class_id: r.class_id,
+                        course_id: r.course_id,
+                        role: "student",
+                      })),
                     };
                     
                     console.log('Sending student update data:', updateData);
