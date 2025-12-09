@@ -35,6 +35,7 @@ interface ForensicAnswerRow {
   questionSpecimen: string;
   standardSpecimen: string;
   points: number;
+  pointType?: string;
 }
 
 const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({

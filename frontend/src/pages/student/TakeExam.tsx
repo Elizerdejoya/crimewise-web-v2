@@ -802,7 +802,7 @@ const TakeExam = () => {
       // Get teacher findings from the question data
       let teacherFindingsForPayload = '';
       if (exam && exam.questions && Array.isArray(exam.questions)) {
-        const currentQuestion = exam.questions.find((q) => q.id === currentQuestionId);
+        const currentQuestion = exam.questions.find((q) => q.id === exam.question_id);
         if (currentQuestion) {
           if (currentQuestion.explanation) {
             try {

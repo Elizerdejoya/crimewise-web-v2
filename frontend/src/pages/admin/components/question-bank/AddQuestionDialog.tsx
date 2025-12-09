@@ -126,7 +126,8 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             const needed = next.length - rows.length;
             if (needed <= 0) return rows;
             const lastPoints = rows.length > 0 ? rows[rows.length - 1].points : 1;
-            const additions = Array.from({ length: needed }).map(() => ({ questionSpecimen: "", standardSpecimen: "", points: lastPoints }));
+            const lastPointType = rows.length > 0 ? rows[rows.length - 1].pointType : "each";
+            const additions = Array.from({ length: needed }).map(() => ({ questionSpecimen: "", standardSpecimen: "", points: lastPoints, pointType: lastPointType }));
             return [...rows, ...additions];
           });
           return next;
