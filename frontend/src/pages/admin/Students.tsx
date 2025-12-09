@@ -1058,98 +1058,103 @@ const StudentsPage = () => {
 
         {/* Edit Student Modal (multi-edit) */}
         <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-          <DialogContent className="max-w-[90vw] w-full">
+          <DialogContent className="max-w-[95vw] w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl h-[90vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Edit Student</DialogTitle>
               <DialogDescription>
                 Edit the details of the selected student(s).
               </DialogDescription>
             </DialogHeader>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Student ID</TableHead>
-                    <TableHead>Password</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Course</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students
-                    .filter((s) => selectedIds.includes(s.id))
-                    .map((row, idx) => (
-                      <TableRow key={row.id}>
-                        <TableCell>{row.id}</TableCell>
-                        <TableCell>
-                          <Input
-                            value={(editRows[idx]?.name ?? row.name) || ""}
-                            onChange={(e) =>
-                              setEditRows((rows) => {
-                                const newRows = [...rows];
-                                newRows[idx] = {
-                                  ...newRows[idx],
-                                  name: e.target.value,
-                                };
-                                return newRows;
-                              })
-                            }
-                            placeholder="Student name"
-                          />
+            <div className="flex-1 overflow-y-auto border rounded-md">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background">
+                    <TableRow>
+                      <TableHead className="min-w-[60px]">ID</TableHead>
+                      <TableHead className="min-w-[150px]">Name</TableHead>
+                      <TableHead className="min-w-[180px]">Email</TableHead>
+                      <TableHead className="min-w-[120px]">Student ID</TableHead>
+                      <TableHead className="min-w-[120px]">Password</TableHead>
+                      <TableHead className="min-w-[120px]">Class</TableHead>
+                      <TableHead className="min-w-[120px]">Course</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {students
+                      .filter((s) => selectedIds.includes(s.id))
+                      .map((row, idx) => (
+                        <TableRow key={row.id}>
+                          <TableCell className="min-w-[60px]">{row.id}</TableCell>
+                          <TableCell className="min-w-[150px]">
+                            <Input
+                              value={(editRows[idx]?.name ?? row.name) || ""}
+                              onChange={(e) =>
+                                setEditRows((rows) => {
+                                  const newRows = [...rows];
+                                  newRows[idx] = {
+                                    ...newRows[idx],
+                                    name: e.target.value,
+                                  };
+                                  return newRows;
+                                })
+                              }
+                              placeholder="Student name"
+                              className="text-sm"
+                            />
+                          </TableCell>
+                          <TableCell className="min-w-[180px]">
+                            <Input
+                              value={editRows[idx]?.email ?? row.email}
+                              onChange={(e) =>
+                                setEditRows((rows) => {
+                                  const newRows = [...rows];
+                                  newRows[idx] = {
+                                    ...newRows[idx],
+                                    email: e.target.value,
+                                  };
+                                  return newRows;
+                                })
+                              }
+                              placeholder="Email address"
+                              className="text-sm"
+                            />
+                          </TableCell>
+                          <TableCell className="min-w-[120px]">
+                            <Input
+                              value={editRows[idx]?.studentId ?? row.student_id}
+                              onChange={(e) =>
+                                setEditRows((rows) => {
+                                  const newRows = [...rows];
+                                  newRows[idx] = {
+                                    ...newRows[idx],
+                                    studentId: e.target.value,
+                                  };
+                                  return newRows;
+                                })
+                              }
+                              placeholder="Student ID"
+                              className="text-sm"
+                            />
+                          </TableCell>
+                          <TableCell className="min-w-[120px]">
+                            <Input
+                              type="password"
+                              value={editRows[idx]?.password ?? row.password}
+                              onChange={(e) =>
+                                setEditRows((rows) => {
+                                  const newRows = [...rows];
+                                  newRows[idx] = {
+                                    ...newRows[idx],
+                                    password: e.target.value,
+                                  };
+                                  return newRows;
+                                })
+                              }
+                              placeholder="Password"
+                              className="text-sm"
+                            />
                         </TableCell>
-                        <TableCell>
-                          <Input
-                            value={editRows[idx]?.email ?? row.email}
-                            onChange={(e) =>
-                              setEditRows((rows) => {
-                                const newRows = [...rows];
-                                newRows[idx] = {
-                                  ...newRows[idx],
-                                  email: e.target.value,
-                                };
-                                return newRows;
-                              })
-                            }
-                            placeholder="Email address"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={editRows[idx]?.studentId ?? row.student_id}
-                            onChange={(e) =>
-                              setEditRows((rows) => {
-                                const newRows = [...rows];
-                                newRows[idx] = {
-                                  ...newRows[idx],
-                                  studentId: e.target.value,
-                                };
-                                return newRows;
-                              })
-                            }
-                            placeholder="Student ID"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="password"
-                            value={editRows[idx]?.password ?? row.password}
-                            onChange={(e) =>
-                              setEditRows((rows) => {
-                                const newRows = [...rows];
-                                newRows[idx] = {
-                                  ...newRows[idx],
-                                  password: e.target.value,
-                                };
-                                return newRows;
-                              })
-                            }
-                            placeholder="Password"
-                          />
-                        </TableCell>
-                        <TableCell>
+                        <TableCell className="min-w-[120px]">
                           <Select
                             value={
                               editRows[idx]?.class_id ||
@@ -1164,7 +1169,7 @@ const StudentsPage = () => {
                               })
                             }
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className="text-sm">
                               <SelectValue placeholder="Select class" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1194,7 +1199,7 @@ const StudentsPage = () => {
                               })
                             }
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className="text-sm">
                               <SelectValue placeholder="Select course" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1210,8 +1215,9 @@ const StudentsPage = () => {
                     ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-3 mt-4"
               <Button
                 variant="outline"
                 onClick={() => setIsEditModalOpen(false)}
