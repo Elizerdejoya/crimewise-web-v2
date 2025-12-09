@@ -389,7 +389,7 @@ const Results = () => {
 
         examContent += `
           <div style="margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px;">
-            <h3 style="margin: 0 0 8px 0; font-size: 14px;">AI Rubric Breakdown</h3>
+            <h3 style="margin: 0 0 8px 0; font-size: 14px;">Rubric Breakdown</h3>
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 12px;">
               <div><strong>Accuracy:</strong> ${fmtComp(displayVals.accuracy)}</div>
               <div><strong>Completeness:</strong> ${fmtComp(displayVals.completeness)}</div>
@@ -1047,7 +1047,7 @@ const Results = () => {
 
                                     {selectedAiGrade ? (
                                       <div className="p-4 border rounded-md bg-white">
-                                        <h4 className="font-semibold mb-2">AI Rubric Breakdown</h4>
+                                        <h4 className="font-semibold mb-2">Rubric Breakdown</h4>
                                         {(() => {
                                           // Display rubric components. If the AI record contains per-component
                                           // values (even 0), show them. If all components are missing/zero and
@@ -1114,13 +1114,12 @@ const Results = () => {
                                           );
                                         })()}
                                         <div className="mt-2">
-                                          <strong>AI Explanation:</strong>
                                           <div className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{selectedAiGrade.feedback}</div>
                                         </div>
                                       </div>
                                     ) : (
                                       <div className="p-4 border rounded-md bg-yellow-50 text-sm">
-                                        <strong>AI grading pending.</strong>
+                                        <strong>Grading pending.</strong>
                                         <div className="mt-1">The AI grader is processing this submission. If this has been pending a long time you can request a requeue.</div>
                                         {(() => {
                                           const qKey = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
