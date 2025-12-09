@@ -454,11 +454,13 @@ router.post(
         explanation,
         studentFindings,
         teacherFindings,
+        conclusionCorrect,
       } = req.body;
 
       console.log('[EXAMS][SUBMIT] Received findings:', { 
         studentFindings: studentFindings ? `${studentFindings.toString().substring(0, 50)}...` : 'missing',
-        teacherFindings: teacherFindings ? `${teacherFindings.toString().substring(0, 50)}...` : 'missing'
+        teacherFindings: teacherFindings ? `${teacherFindings.toString().substring(0, 50)}...` : 'missing',
+        conclusionCorrect
       });
 
       const userId = req.user.id;
@@ -594,15 +596,39 @@ router.post(
           const objectivity = Math.round(similarity * 100);
 
           // Weighted average: 25% accuracy + 25% completeness + 25% clarity + 25% objectivity
-          const score = Math.round(
+          let similarityScore = Math.round(
             (accuracy * 0.25) + (completeness * 0.25) + (clarity * 0.25) + (objectivity * 0.25)
           );
 
-          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { accuracy, completeness, clarity, objectivity, score, similarity, charDiff });
+          // NEW SCORING FORMULA:
+          // Conclusion: 70% base score
+          // Findings similarity: 30% additional score based on similarity
+          // Correct conclusion: 70 + (30 * similarity/100)
+          // Wrong conclusion: 0 + (30 * similarity/100)
+          
+          let finalScore = 0;
+          if (conclusionCorrect === true) {
+            // Correct conclusion: 70% + 30% of similarity score
+            finalScore = 70 + (30 * (similarityScore / 100));
+          } else {
+            // Wrong conclusion: 0% + 30% of similarity score
+            finalScore = 0 + (30 * (similarityScore / 100));
+          }
+          
+          finalScore = Math.round(finalScore);
+
+          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { 
+            accuracy, completeness, clarity, objectivity, 
+            similarityScore, 
+            conclusionCorrect, 
+            finalScore, 
+            similarity, 
+            charDiff 
+          });
 
           const aiResponse = await db.sql`
             INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)
-            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${score}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity})
+            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${finalScore}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity})
             ON CONFLICT (student_id, exam_id) DO UPDATE SET
               student_findings = EXCLUDED.student_findings,
               teacher_findings = EXCLUDED.teacher_findings,

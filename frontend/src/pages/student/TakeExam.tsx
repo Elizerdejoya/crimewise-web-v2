@@ -824,6 +824,8 @@ const TakeExam = () => {
 
       // Extract student findings - handle both JSON and plain text
       let studentFindingsForPayload = '';
+      let conclusionIsCorrect = false;
+      
       if (answerToSave) {
         try {
           const parsed = JSON.parse(answerToSave);
@@ -846,6 +848,11 @@ const TakeExam = () => {
         }
       }
 
+      // Check if conclusion is correct (based on explanationDetails which was populated above)
+      if (details && details.explanationDetails) {
+        conclusionIsCorrect = details.explanationDetails.conclusionMatched === true;
+      }
+
       const payload = {
         student_id,
         exam_id: exam.id,
@@ -857,6 +864,7 @@ const TakeExam = () => {
         details: JSON.stringify(details),
         studentFindings: studentFindingsForPayload,
         teacherFindings: teacherFindingsForPayload,
+        conclusionCorrect: conclusionIsCorrect,
       };
 
       // Submit the exam
