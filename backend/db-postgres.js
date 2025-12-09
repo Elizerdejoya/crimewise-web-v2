@@ -38,121 +38,50 @@ async function initializeSchema() {
   try {
     console.log('[DB] Checking PostgreSQL schema...');
 
-    // Check if ai_grades table exists
-    const checkGrades = await client.query(`
-      SELECT EXISTS(
-        SELECT 1 FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = 'ai_grades'
-      )
-    `);
-    
-    // If ai_grades exists, try to migrate it (remove problematic foreign key)
-    if (checkGrades.rows[0].exists) {
-      console.log('[DB] ai_grades table exists, checking for constraints to migrate...');
-      try {
-        // Drop foreign key constraint if it exists
-        await client.query(`
-          ALTER TABLE ai_grades 
-          DROP CONSTRAINT IF EXISTS ai_grades_student_id_fkey
-        `);
-        console.log('[DB] Removed foreign key constraint from ai_grades');
-      } catch (migrationErr) {
-        console.log('[DB] No migration needed or already migrated:', migrationErr.message);
-      }
-      
-      // Check if exam_id column exists, if not add it
-      try {
-        const checkColumn = await client.query(`
-          SELECT EXISTS(
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = 'ai_grades' AND column_name = 'exam_id'
-          )
-        `);
-        if (!checkColumn.rows[0].exists) {
-          console.log('[DB] Adding missing exam_id column to ai_grades');
-          await client.query(`
-            ALTER TABLE ai_grades 
-            ADD COLUMN exam_id INTEGER DEFAULT 0
-          `);
-          console.log('[DB] Added exam_id column to ai_grades');
-        }
-      } catch (columnErr) {
-        console.log('[DB] Could not check/add exam_id column:', columnErr.message);
-      }
-      
-      // Add UNIQUE constraint if not exists
-      try {
-        await client.query(`
-          ALTER TABLE ai_grades 
-          ADD CONSTRAINT ai_grades_student_exam_unique UNIQUE(student_id, exam_id)
-        `);
-        console.log('[DB] Added UNIQUE constraint to ai_grades');
-      } catch (constraintErr) {
-        if (!constraintErr.message.includes('already exists')) {
-          console.log('[DB] Could not add UNIQUE constraint:', constraintErr.message);
-        }
-      }
-    }
-
-    // Check if ai_queue table exists
+    // Check if ai_findings table exists
     const checkTable = await client.query(`
       SELECT EXISTS(
         SELECT 1 FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = 'ai_queue'
+        WHERE table_schema = 'public' AND table_name = 'ai_findings'
       )
     `);
     
     if (checkTable.rows[0].exists) {
-      console.log('[DB] ✓ PostgreSQL schema verified (ai_queue table exists)');
+      console.log('[DB] ✓ PostgreSQL schema verified (ai_findings table exists)');
       return true;
     }
 
     // Tables don't exist, create them
-    console.log('[DB] Creating PostgreSQL AI grading tables...');
+    console.log('[DB] Creating PostgreSQL findings table...');
     
-    // Create ai_grades table
+    // Create ai_findings table - Clean, simple structure
+    // Stores student findings and teacher findings for comparison
     await client.query(`
-      CREATE TABLE IF NOT EXISTS ai_grades (
+      CREATE TABLE IF NOT EXISTS ai_findings (
         id SERIAL PRIMARY KEY,
         student_id INTEGER NOT NULL,
         exam_id INTEGER NOT NULL,
-        score INTEGER NOT NULL,
-        accuracy INTEGER DEFAULT 0,
-        completeness INTEGER DEFAULT 0,
-        clarity INTEGER DEFAULT 0,
-        objectivity INTEGER DEFAULT 0,
+        result_id INTEGER,
+        student_findings TEXT NOT NULL,
+        teacher_findings TEXT NOT NULL,
+        score DECIMAL(5,2) DEFAULT 0,
+        accuracy DECIMAL(5,2) DEFAULT 0,
+        completeness DECIMAL(5,2) DEFAULT 0,
+        clarity DECIMAL(5,2) DEFAULT 0,
+        objectivity DECIMAL(5,2) DEFAULT 0,
         feedback TEXT,
-        raw_response TEXT,
-        api_key_index INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(student_id, exam_id)
       )
     `);
-    console.log('[DB] Created ai_grades table');
-
-    // Create ai_queue table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS ai_queue (
-        id SERIAL PRIMARY KEY,
-        student_id INTEGER NOT NULL,
-        exam_id INTEGER NOT NULL,
-        teacher_findings TEXT,
-        student_findings TEXT,
-        status TEXT DEFAULT 'pending',
-        attempts INTEGER DEFAULT 0,
-        last_error TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
-      )
-    `);
-    console.log('[DB] Created ai_queue table');
+    console.log('[DB] Created ai_findings table');
     
     // Create indexes for faster queries
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_grades_student_exam ON ai_grades(student_id, exam_id)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_queue_status ON ai_queue(status)`);
-    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_queue_student_exam ON ai_queue(student_id, exam_id)`);
-    console.log('[DB] ✓ AI grading tables created successfully');
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_student_exam ON ai_findings(student_id, exam_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_exam ON ai_findings(exam_id)`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_student ON ai_findings(student_id)`);
+    console.log('[DB] ✓ Findings table created successfully');
     
     return true;
   } catch (err) {

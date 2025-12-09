@@ -452,6 +452,8 @@ router.post(
         tab_switches,
         details,
         explanation,
+        studentFindings,
+        teacherFindings,
       } = req.body;
 
       const userId = req.user.id;
@@ -537,28 +539,33 @@ router.post(
 
       const resultId = result[0].id;
 
-      // Queue for AI grading if exam has questions
-      try {
-        // Get questions for this exam
-        const questions = await db.sql`SELECT id FROM questions WHERE exam_id = ${exam_id} LIMIT 1`;
-        
-        if (questions && questions.length > 0) {
-          const questionId = questions[0].id;
+      // Call AI grader to calculate scores if both findings are present
+      if (studentFindings && teacherFindings) {
+        try {
+          console.log(`[EXAMS][SUBMIT] Calling AI grader for result ${resultId}`);
           
-          // Get a batch_id (use exam_id as batch_id for simplicity, or create one)
-          const batches = await db.sql`SELECT id FROM batches WHERE organization_id = ${userOrgId} LIMIT 1`;
-          const batchId = batches && batches[0] ? batches[0].id : 1;
-          
-          // Queue for AI grading
-          await db.sql`
-            INSERT INTO ai_queue (organization_id, batch_id, result_id, question_id, student_answer, status)
-            VALUES (${userOrgId}, ${batchId}, ${resultId}, ${questionId}, ${answer || null}, 'pending')
+          // Build findings string from studentFindings (could be object or string)
+          let studentFindingsStr = studentFindings;
+          if (typeof studentFindings === 'object') {
+            // If it's an object with explanation field, use that
+            studentFindingsStr = studentFindings.explanation || JSON.stringify(studentFindings);
+          }
+
+          const aiResponse = await db.sql`
+            INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)
+            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${0}, ${0}, ${0}, ${0}, ${0})
+            ON CONFLICT (student_id, exam_id) DO UPDATE SET
+              student_findings = EXCLUDED.student_findings,
+              teacher_findings = EXCLUDED.teacher_findings,
+              updated_at = CURRENT_TIMESTAMP
+            RETURNING id
           `;
-          console.log(`[EXAMS][SUBMIT] Queued result ${resultId} for AI grading`);
+          
+          console.log(`[EXAMS][SUBMIT] AI findings saved for result ${resultId}`);
+        } catch (aiErr) {
+          // Don't fail the submit if AI grading fails, just log it
+          console.warn(`[EXAMS][SUBMIT] Failed to save AI findings: ${aiErr.message}`);
         }
-      } catch (queueErr) {
-        // Don't fail the submit if queueing fails, just log it
-        console.warn(`[EXAMS][SUBMIT] Failed to queue AI grading: ${queueErr.message}`);
       }
 
       res.json({ success: true, id: resultId });

@@ -799,15 +799,35 @@ const TakeExam = () => {
 
       setScoringDetails(details);
 
+      // Get teacher findings from the question data
+      let teacherFindingsForPayload = '';
+      const currentQuestion = exam.questions.find((q) => q.id === currentQuestionId);
+      if (currentQuestion) {
+        if (currentQuestion.explanation) {
+          try {
+            const parsed = JSON.parse(currentQuestion.explanation);
+            if (typeof parsed.explanation === 'string') teacherFindingsForPayload = parsed.explanation;
+            else if (parsed.explanation?.text) teacherFindingsForPayload = parsed.explanation.text;
+            else teacherFindingsForPayload = currentQuestion.answer;
+          } catch {
+            teacherFindingsForPayload = currentQuestion.answer || '';
+          }
+        } else {
+          teacherFindingsForPayload = currentQuestion.answer || '';
+        }
+      }
+
       const payload = {
         student_id,
         exam_id: exam.id,
         answer: answerToSave,
-        explanation: explanation.trim(), // Also include it at the top level for compatibility
+        explanation: explanation.trim(),
         date: new Date().toISOString().split("T")[0],
         score,
         tab_switches: tabSwitchCount,
         details: JSON.stringify(details),
+        studentFindings: answerToSave || '',
+        teacherFindings: teacherFindingsForPayload,
       };
 
       // Submit the exam
@@ -841,31 +861,6 @@ const TakeExam = () => {
             ? `Your answers have been recorded successfully.`
             : "Your answers have been recorded successfully.",
       });
-
-      // Enqueue AI grading (non-blocking)
-      try {
-        // Use the same teacherFindings that was stored in details
-        const teacherFindingsToSend = teacherFindingsForDetails;
-
-        fetch(`${API_BASE_URL}/api/ai-grader/submit`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            studentId: student_id,
-            examId: exam.id,
-            teacherFindings: teacherFindingsToSend,
-            studentFindings: answerToSave || ''
-          })
-        }).then(() => {
-          // Trigger AI worker to process the job immediately (for serverless/Vercel)
-          fetch(`${API_BASE_URL}/api/trigger-ai-worker?limit=1&rounds=1`, {
-            method: 'POST',
-            headers: getAuthHeaders()
-          }).catch(err => console.error('Failed to trigger AI worker:', err));
-        }).catch(err => console.error('Failed to enqueue AI grading:', err));
-      } catch (e) {
-        console.error('AI enqueue error:', e);
-      }
 
       sessionStorage.removeItem("currentExam");
       sessionStorage.removeItem("examStartTimestamp");
