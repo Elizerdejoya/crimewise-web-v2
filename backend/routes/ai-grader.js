@@ -154,7 +154,7 @@ function generateFeedback(score, studentLen, teacherLen) {
 
 // POST /api/ai-grader/submit
 // Submit findings for instant grading using local string similarity
-router.post('/submit', authenticateToken, async (req, res) => {
+router.post('/submit', async (req, res) => {
   try {
     console.log('[AI-GRADER][SUBMIT] ========== REQUEST RECEIVED ==========');
     const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
@@ -295,7 +295,7 @@ router.post('/submit', authenticateToken, async (req, res) => {
 });
 
 // GET /api/ai-grader/result/:studentId/:examId - returns latest ai grade for student and exam
-router.get('/result/:studentId/:examId', authenticateToken, async (req, res) => {
+router.get('/result/:studentId/:examId', async (req, res) => {
   try {
     const { studentId, examId } = req.params;
     console.log('[AI-GRADER][GET-RESULT] Fetching grade for student:', studentId, 'exam:', examId);
