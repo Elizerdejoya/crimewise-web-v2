@@ -822,6 +822,30 @@ const TakeExam = () => {
         teacherFindingsForPayload = question.answer;
       }
 
+      // Extract student findings - handle both JSON and plain text
+      let studentFindingsForPayload = '';
+      if (answerToSave) {
+        try {
+          const parsed = JSON.parse(answerToSave);
+          // For forensic exams with conclusion field
+          if (parsed.conclusion) {
+            studentFindingsForPayload = parsed.conclusion;
+          } else if (parsed.explanation) {
+            // For other types with explanation
+            studentFindingsForPayload = parsed.explanation;
+          } else if (parsed.answer) {
+            // For text answers
+            studentFindingsForPayload = parsed.answer;
+          } else {
+            // Use the entire JSON string
+            studentFindingsForPayload = answerToSave;
+          }
+        } catch {
+          // If not JSON, use as-is
+          studentFindingsForPayload = answerToSave;
+        }
+      }
+
       const payload = {
         student_id,
         exam_id: exam.id,
@@ -831,7 +855,7 @@ const TakeExam = () => {
         score,
         tab_switches: tabSwitchCount,
         details: JSON.stringify(details),
-        studentFindings: answerToSave || '',
+        studentFindings: studentFindingsForPayload,
         teacherFindings: teacherFindingsForPayload,
       };
 

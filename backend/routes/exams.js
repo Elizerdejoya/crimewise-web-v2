@@ -562,6 +562,11 @@ router.post(
           const studentClean = studentFindingsStr.toLowerCase().trim();
           const teacherClean = teacherFindings.toLowerCase().trim();
           
+          console.log(`[EXAMS][SUBMIT] Comparing findings:`, {
+            student: studentClean.substring(0, 100),
+            teacher: teacherClean.substring(0, 100)
+          });
+          
           const similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
 
           // Accuracy: text similarity (0-100)
