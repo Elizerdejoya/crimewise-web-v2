@@ -567,7 +567,18 @@ router.post(
             teacher: teacherClean.substring(0, 100)
           });
           
-          const similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+          // Use multiple similarity metrics
+          let similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+          
+          // Boost score for close matches (within 1-2 character differences)
+          const charDiff = Math.abs(studentClean.length - teacherClean.length);
+          if (similarity > 0.9 && charDiff <= 2) {
+            // If very similar with only minor length diff, boost to high score
+            similarity = 0.98;
+          } else if (similarity > 0.85 && charDiff <= 1) {
+            // If already quite similar with 1 char difference, boost more
+            similarity = 0.95;
+          }
 
           // Accuracy: text similarity (0-100)
           const accuracy = Math.round(similarity * 100);
@@ -587,7 +598,7 @@ router.post(
             (accuracy * 0.25) + (completeness * 0.25) + (clarity * 0.25) + (objectivity * 0.25)
           );
 
-          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { accuracy, completeness, clarity, objectivity, score, similarity });
+          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { accuracy, completeness, clarity, objectivity, score, similarity, charDiff });
 
           const aiResponse = await db.sql`
             INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)

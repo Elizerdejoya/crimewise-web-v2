@@ -12,7 +12,17 @@ function calculateScore(studentText, teacherText) {
   const studentClean = studentText.toLowerCase().trim();
   const teacherClean = teacherText.toLowerCase().trim();
 
-  const similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+  let similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+
+  // Boost score for close matches (within 1-2 character differences)
+  const charDiff = Math.abs(studentClean.length - teacherClean.length);
+  if (similarity > 0.9 && charDiff <= 2) {
+    // If very similar with only minor length diff, boost to high score
+    similarity = 0.98;
+  } else if (similarity > 0.85 && charDiff <= 1) {
+    // If already quite similar with 1 char difference, boost more
+    similarity = 0.95;
+  }
 
   // Accuracy: text similarity (0-100)
   const accuracy = Math.round(similarity * 100);
