@@ -4,8 +4,8 @@ const db = require('../db');
 const stringSimilarity = require('string-similarity');
 const { authenticateToken } = require('../middleware');
 
-// TEST ENDPOINT - Direct database write
-router.post('/test-db', async (req, res) => {
+// TEST ENDPOINT - Direct database write (GET for easy testing)
+router.get('/test-db', async (req, res) => {
   try {
     console.log('[AI-GRADER][TEST-DB] Testing database INSERT');
     const testResult = await db.sql`
