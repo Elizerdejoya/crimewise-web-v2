@@ -70,10 +70,30 @@ router.post('/submit', authenticateToken, async (req, res) => {
     const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
     
     console.log('[AI-GRADER][SUBMIT] studentId:', studentId, 'examId:', examId);
+    console.log('[AI-GRADER][SUBMIT] studentFindings type:', typeof studentFindings, 'length:', String(studentFindings || '').length);
     
     if (!studentId || !examId || !studentFindings) {
-      console.error('[AI-GRADER][SUBMIT] Validation failed');
+      console.error('[AI-GRADER][SUBMIT] Validation failed - missing required fields');
       return res.status(400).json({ error: 'studentId, examId, and studentFindings required' });
+    }
+
+    // Parse studentFindings - it might be JSON with {explanation, answer, etc.}
+    let parsedStudentFindings = studentFindings;
+    try {
+      const maybe = typeof studentFindings === 'string' ? JSON.parse(studentFindings) : studentFindings;
+      if (maybe && typeof maybe === 'object') {
+        // Extract explanation field if it exists, otherwise use the whole object as string
+        if (maybe.explanation && typeof maybe.explanation === 'string') {
+          parsedStudentFindings = maybe.explanation;
+        } else if (maybe.answer && typeof maybe.answer === 'string') {
+          parsedStudentFindings = maybe.answer;
+        } else {
+          parsedStudentFindings = JSON.stringify(maybe);
+        }
+      }
+    } catch (e) {
+      // If it's not JSON, use as-is
+      parsedStudentFindings = String(studentFindings);
     }
 
     // Parse teacherFindings
@@ -99,7 +119,7 @@ router.post('/submit', authenticateToken, async (req, res) => {
 
     // Normalize and compare
     const teacher = String(teacherFindings || '').trim();
-    const student = String(studentFindings || '').trim();
+    const student = String(parsedStudentFindings || '').trim();
     
     let result = null;
     
