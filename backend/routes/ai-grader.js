@@ -151,17 +151,13 @@ router.post('/submit', async (req, res) => {
     // SAVE TO DATABASE DIRECTLY
     console.log('[AI-GRADER][SUBMIT] Saving to database:', { sid: studentId, eid: examId, score: result.score });
     try {
+      // First, try to delete any existing grade for this student/exam
+      await db.sql`DELETE FROM ai_grades WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)}`;
+      
+      // Then insert the new grade
       await db.sql`
         INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
         VALUES (${Number(studentId)}, ${Number(examId)}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${result.raw_response})
-        ON CONFLICT (student_id, exam_id) DO UPDATE SET
-          score = ${result.score},
-          accuracy = ${result.accuracy},
-          completeness = ${result.completeness},
-          clarity = ${result.clarity},
-          objectivity = ${result.objectivity},
-          feedback = ${result.feedback},
-          raw_response = ${result.raw_response}
       `;
       console.log('[AI-GRADER][SUBMIT] Grade saved successfully');
     } catch (dbErr) {
