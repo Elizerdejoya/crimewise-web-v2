@@ -4,6 +4,39 @@ const db = require('../db');
 const stringSimilarity = require('string-similarity');
 const { authenticateToken } = require('../middleware');
 
+// TEST ENDPOINT - Direct database write
+router.post('/test-db', async (req, res) => {
+  try {
+    console.log('[AI-GRADER][TEST-DB] Testing database connection');
+    const testResult = await db.sql`
+      INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
+      VALUES (999, 999, 50, 50, 50, 50, 50, 'Test feedback', 'TEST')
+    `;
+    console.log('[AI-GRADER][TEST-DB] Insert successful:', testResult);
+    res.json({ success: true, message: 'Database insert working', result: testResult });
+  } catch (err) {
+    console.error('[AI-GRADER][TEST-DB] Database error:', err && err.message);
+    console.error('[AI-GRADER][TEST-DB] Stack:', err && err.stack);
+    res.status(500).json({ error: 'Database error', details: err && err.message });
+  }
+});
+
+// TEST ENDPOINT - Verify table exists
+router.get('/test-schema', async (req, res) => {
+  try {
+    console.log('[AI-GRADER][TEST-SCHEMA] Checking table schema');
+    const columns = await db.sql`
+      SELECT column_name, data_type FROM information_schema.columns 
+      WHERE table_name = 'ai_grades'
+    `;
+    console.log('[AI-GRADER][TEST-SCHEMA] Columns:', columns);
+    res.json({ success: true, columns });
+  } catch (err) {
+    console.error('[AI-GRADER][TEST-SCHEMA] Error:', err && err.message);
+    res.status(500).json({ error: 'Schema check failed', details: err && err.message });
+  }
+});
+
 // Helper functions for grading
 function calculateAccuracy(student, teacher, baseSimilarity) {
   const studentWords = new Set((student || '').toLowerCase().match(/\b\w{3,}\b/g) || []);
