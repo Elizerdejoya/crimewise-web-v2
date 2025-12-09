@@ -550,6 +550,11 @@ router.post(
       if (studentFindings && teacherFindings) {
         try {
           console.log(`[EXAMS][SUBMIT] Calculating AI scores for result ${resultId}`);
+          console.log(`[EXAMS][SUBMIT] Raw input:`, { 
+            studentFindings, 
+            teacherFindings,
+            conclusionCorrect
+          });
           
           // Build findings string from studentFindings (could be object or string)
           let studentFindingsStr = studentFindings;
@@ -558,6 +563,8 @@ router.post(
             studentFindingsStr = studentFindings.explanation || JSON.stringify(studentFindings);
           }
 
+          console.log(`[EXAMS][SUBMIT] Extracted studentFindingsStr:`, studentFindingsStr);
+
           // Calculate scores using string similarity
           const stringSimilarity = require('string-similarity');
           
@@ -565,12 +572,16 @@ router.post(
           const teacherClean = teacherFindings.toLowerCase().trim();
           
           console.log(`[EXAMS][SUBMIT] Comparing findings:`, {
-            student: studentClean.substring(0, 100),
-            teacher: teacherClean.substring(0, 100)
+            student: studentClean,
+            teacher: teacherClean,
+            studentLen: studentClean.length,
+            teacherLen: teacherClean.length
           });
           
           // Use multiple similarity metrics
           let similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+          
+          console.log(`[EXAMS][SUBMIT] Raw similarity before boost: ${similarity}`);
           
           // Boost score for close matches (within 1-2 character differences)
           const charDiff = Math.abs(studentClean.length - teacherClean.length);
@@ -580,7 +591,12 @@ router.post(
           } else if (similarity > 0.85 && charDiff <= 1) {
             // If already quite similar with 1 char difference, boost more
             similarity = 0.95;
+          } else if (similarity > 0.8 && charDiff <= 2) {
+            // If fairly similar with minor diff, boost moderately
+            similarity = 0.90;
           }
+
+          console.log(`[EXAMS][SUBMIT] Boosted similarity: ${similarity}, charDiff: ${charDiff}`);
 
           // Accuracy: text similarity (0-100)
           const accuracy = Math.round(similarity * 100);
