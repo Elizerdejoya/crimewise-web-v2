@@ -4,6 +4,12 @@ const db = require('../db');
 const stringSimilarity = require('string-similarity');
 const { authenticateToken } = require('../middleware');
 
+// Log ALL requests to ai-grader
+router.use((req, res, next) => {
+  console.log('[AI-GRADER] REQUEST:', req.method, req.path, 'body:', req.body && Object.keys(req.body).join(','));
+  next();
+});
+
 // TEST ENDPOINT - Direct database write (GET for easy testing)
 router.get('/test-db', async (req, res) => {
   try {
