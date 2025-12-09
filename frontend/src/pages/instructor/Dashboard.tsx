@@ -35,6 +35,7 @@ const InstructorDashboard = () => {
   const [questions, setQuestions] = useState([]);
   const [recentExams, setRecentExams] = useState([]);
   const [classes, setClasses] = useState([]);
+  const [assignedClassIds, setAssignedClassIds] = useState<number[]>([]);
   const [examResults, setExamResults] = useState<any>({});
   const [aiScores, setAiScores] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(true);
@@ -179,10 +180,24 @@ const InstructorDashboard = () => {
       .finally(() => setLoading(false));
 
     // Fetch classes so we can show student counts per class
-    fetch(`${API_BASE_URL}/api/classes`, { headers: getAuthHeaders() })
+    // First, get the instructor's assigned classes
+    fetch(`${API_BASE_URL}/api/relations/class-instructor`, { headers: getAuthHeaders() })
       .then(r => r.ok ? r.json() : [])
-      .then(data => setClasses(Array.isArray(data) ? data : []))
-      .catch(err => console.error('Error fetching classes:', err));
+      .then(data => {
+        // Filter to get only this instructor's assigned classes
+        const assignedRelations = Array.isArray(data) ? data.filter((rel: any) => rel.instructor_id === instructorId) : [];
+        const classIds = assignedRelations.map((rel: any) => rel.class_id);
+        setAssignedClassIds(classIds);
+        
+        // Now fetch all classes and filter by assigned class IDs
+        return fetch(`${API_BASE_URL}/api/classes`, { headers: getAuthHeaders() })
+          .then(r => r.ok ? r.json() : [])
+          .then(allClasses => {
+            const filtered = Array.isArray(allClasses) ? allClasses.filter((c: any) => classIds.includes(c.id)) : [];
+            setClasses(filtered);
+          });
+      })
+      .catch(err => console.error('Error fetching assigned classes:', err));
   }, []);
 
   // Fetch exam results for analytics (for each recent exam)
