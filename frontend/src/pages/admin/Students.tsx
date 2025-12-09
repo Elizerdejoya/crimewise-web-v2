@@ -1217,7 +1217,7 @@ const StudentsPage = () => {
               </Table>
               </div>
             </div>
-            <DialogFooter className="gap-2 sm:gap-3 mt-4"
+            <DialogFooter className="gap-2 sm:gap-3 mt-4">
               <Button
                 variant="outline"
                 onClick={() => setIsEditModalOpen(false)}
