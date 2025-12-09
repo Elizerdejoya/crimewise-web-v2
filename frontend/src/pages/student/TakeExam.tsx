@@ -819,7 +819,20 @@ const TakeExam = () => {
         }
       } else if (question && question.answer) {
         // Fallback to question state if questions array doesn't exist
-        teacherFindingsForPayload = question.answer;
+        // For forensic exams, question.answer is JSON, extract the expected conclusion
+        try {
+          const parsed = JSON.parse(question.answer);
+          if (parsed.explanation?.conclusion) {
+            teacherFindingsForPayload = parsed.explanation.conclusion;
+          } else if (typeof parsed.explanation === 'string') {
+            teacherFindingsForPayload = parsed.explanation;
+          } else {
+            teacherFindingsForPayload = question.answer;
+          }
+        } catch {
+          // If not JSON, use as-is
+          teacherFindingsForPayload = question.answer;
+        }
       }
 
       // Extract student findings - handle both JSON and plain text
