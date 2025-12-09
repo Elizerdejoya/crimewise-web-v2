@@ -456,6 +456,11 @@ router.post(
         teacherFindings,
       } = req.body;
 
+      console.log('[EXAMS][SUBMIT] Received findings:', { 
+        studentFindings: studentFindings ? `${studentFindings.toString().substring(0, 50)}...` : 'missing',
+        teacherFindings: teacherFindings ? `${teacherFindings.toString().substring(0, 50)}...` : 'missing'
+      });
+
       const userId = req.user.id;
       const userOrgId = req.user.organization_id;
 
@@ -542,7 +547,7 @@ router.post(
       // Call AI grader to calculate scores if both findings are present
       if (studentFindings && teacherFindings) {
         try {
-          console.log(`[EXAMS][SUBMIT] Calling AI grader for result ${resultId}`);
+          console.log(`[EXAMS][SUBMIT] Calculating AI scores for result ${resultId}`);
           
           // Build findings string from studentFindings (could be object or string)
           let studentFindingsStr = studentFindings;
@@ -551,20 +556,46 @@ router.post(
             studentFindingsStr = studentFindings.explanation || JSON.stringify(studentFindings);
           }
 
+          // Calculate scores using string similarity
+          const stringSimilarity = require('string-similarity');
+          
+          const similarity = stringSimilarity.compareTwoStrings(
+            studentFindingsStr.toLowerCase().trim(),
+            teacherFindings.toLowerCase().trim()
+          );
+
+          // Convert 0-1 range to percentages (0-100)
+          const accuracy = Math.round(similarity * 100);
+          const completeness = Math.round(Math.min(studentFindingsStr.length / teacherFindings.length, 1) * 100);
+          const clarity = 80; // Static for now
+          const objectivity = 75; // Static for now
+
+          // Weighted average: 35% accuracy + 35% completeness + 20% clarity + 10% objectivity
+          const score = Math.round(
+            (accuracy * 0.35) + (completeness * 0.35) + (clarity * 0.20) + (objectivity * 0.10)
+          );
+
+          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { accuracy, completeness, clarity, objectivity, score });
+
           const aiResponse = await db.sql`
             INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)
-            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${0}, ${0}, ${0}, ${0}, ${0})
+            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${score}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity})
             ON CONFLICT (student_id, exam_id) DO UPDATE SET
               student_findings = EXCLUDED.student_findings,
               teacher_findings = EXCLUDED.teacher_findings,
+              score = EXCLUDED.score,
+              accuracy = EXCLUDED.accuracy,
+              completeness = EXCLUDED.completeness,
+              clarity = EXCLUDED.clarity,
+              objectivity = EXCLUDED.objectivity,
               updated_at = CURRENT_TIMESTAMP
             RETURNING id
           `;
           
-          console.log(`[EXAMS][SUBMIT] AI findings saved for result ${resultId}`);
+          console.log(`[EXAMS][SUBMIT] AI scores saved for result ${resultId}`);
         } catch (aiErr) {
           // Don't fail the submit if AI grading fails, just log it
-          console.warn(`[EXAMS][SUBMIT] Failed to save AI findings: ${aiErr.message}`);
+          console.warn(`[EXAMS][SUBMIT] Failed to calculate AI scores: ${aiErr.message}`);
         }
       }
 
