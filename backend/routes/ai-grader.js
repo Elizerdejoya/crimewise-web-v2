@@ -9,20 +9,27 @@ function calculateScore(studentText, teacherText) {
     return { accuracy: 0, completeness: 0, clarity: 0, objectivity: 0, score: 0 };
   }
 
-  const similarity = stringSimilarity.compareTwoStrings(
-    studentText.toLowerCase().trim(),
-    teacherText.toLowerCase().trim()
-  );
+  const studentClean = studentText.toLowerCase().trim();
+  const teacherClean = teacherText.toLowerCase().trim();
 
-  // Convert 0-1 range to percentages
+  const similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+
+  // Accuracy: text similarity (0-100)
   const accuracy = Math.round(similarity * 100);
-  const completeness = Math.round(Math.min(studentText.length / teacherText.length, 1) * 100);
-  const clarity = 80; // Static for now - would need NLP to truly calculate
-  const objectivity = 75; // Static for now - would need NLP to truly calculate
+  
+  // Completeness: length match (if student answer is shorter, penalize)
+  const lengthRatio = studentClean.length / teacherClean.length;
+  const completeness = Math.round(Math.min(lengthRatio, 1) * 100);
+  
+  // Clarity: if similarity is high, assume clarity is good
+  const clarity = Math.round(similarity * 100);
+  
+  // Objectivity: if similarity is high, assume objectivity is good
+  const objectivity = Math.round(similarity * 100);
 
-  // Weighted average: 35% accuracy + 35% completeness + 20% clarity + 10% objectivity
+  // Weighted average: 25% accuracy + 25% completeness + 25% clarity + 25% objectivity
   const score = Math.round(
-    (accuracy * 0.35) + (completeness * 0.35) + (clarity * 0.20) + (objectivity * 0.10)
+    (accuracy * 0.25) + (completeness * 0.25) + (clarity * 0.25) + (objectivity * 0.25)
   );
 
   return { accuracy, completeness, clarity, objectivity, score };
