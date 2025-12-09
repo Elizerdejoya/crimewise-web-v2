@@ -60,6 +60,26 @@ async function initializeSchema() {
         console.log('[DB] No migration needed or already migrated:', migrationErr.message);
       }
       
+      // Check if exam_id column exists, if not add it
+      try {
+        const checkColumn = await client.query(`
+          SELECT EXISTS(
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'ai_grades' AND column_name = 'exam_id'
+          )
+        `);
+        if (!checkColumn.rows[0].exists) {
+          console.log('[DB] Adding missing exam_id column to ai_grades');
+          await client.query(`
+            ALTER TABLE ai_grades 
+            ADD COLUMN exam_id INTEGER DEFAULT 0
+          `);
+          console.log('[DB] Added exam_id column to ai_grades');
+        }
+      } catch (columnErr) {
+        console.log('[DB] Could not check/add exam_id column:', columnErr.message);
+      }
+      
       // Add UNIQUE constraint if not exists
       try {
         await client.query(`
