@@ -1558,7 +1558,7 @@ const Results = () => {
                       </div>
 
                       <div className="mt-3 flex gap-2">
-                        {result.answer && result.answer_key && (
+                        {result.answer && result.details && (
                           <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); const btn = triggerRefs.current[key]; if (btn) btn.click(); }}>
                             <Eye className="h-4 w-4 mr-2" /> View Details
                           </Button>

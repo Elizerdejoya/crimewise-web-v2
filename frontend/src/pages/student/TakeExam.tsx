@@ -842,15 +842,16 @@ const TakeExam = () => {
       if (answerToSave) {
         try {
           const parsed = JSON.parse(answerToSave);
-          // For forensic exams with conclusion field
-          if (parsed.conclusion) {
-            studentFindingsForPayload = parsed.conclusion;
-          } else if (parsed.explanation) {
-            // For other types with explanation
+          // For forensic exams, findings are the explanation/analysis (not the conclusion)
+          if (parsed.explanation) {
+            // Forensic exams have explanation as findings
             studentFindingsForPayload = parsed.explanation;
           } else if (parsed.answer) {
             // For text answers
             studentFindingsForPayload = parsed.answer;
+          } else if (parsed.conclusion) {
+            // Fallback to conclusion if no explanation
+            studentFindingsForPayload = parsed.conclusion;
           } else {
             // Use the entire JSON string
             studentFindingsForPayload = answerToSave;
