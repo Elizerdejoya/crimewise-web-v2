@@ -42,24 +42,25 @@ router.get('/test-count', async (req, res) => {
   try {
     console.log('[AI-GRADER][TEST-COUNT] Counting rows in ai_grades');
     const result = await db.sql`SELECT COUNT(*) as count FROM ai_grades`;
-    console.log('[AI-GRADER][TEST-COUNT] Row count:', result);
-    res.json({ success: true, rowCount: result[0]?.count || 0, allData: result });
+    console.log('[AI-GRADER][TEST-COUNT] Row count result:', result);
+    const count = result && result.length > 0 ? result[0].count : 0;
+    res.json({ success: true, rowCount: count, rawResult: result });
   } catch (err) {
     console.error('[AI-GRADER][TEST-COUNT] Error:', err && err.message);
-    res.status(500).json({ error: 'Count failed', details: err && err.message });
+    res.status(500).json({ error: 'Count failed', details: err && err.message, stack: err && err.stack });
   }
 });
 
 // SIMPLE TEST - Get all grades (NO AUTH)
 router.get('/test-all', async (req, res) => {
   try {
-    console.log('[AI-GRADER][TEST-ALL] Fetching all grades');
+    console.log('[AI-GRADER][TEST-ALL] Fetching all grades from ai_grades');
     const result = await db.sql`SELECT * FROM ai_grades LIMIT 100`;
-    console.log('[AI-GRADER][TEST-ALL] Found', result.length, 'rows');
-    res.json({ success: true, count: result.length, grades: result });
+    console.log('[AI-GRADER][TEST-ALL] Found', (result && result.length) || 0, 'rows');
+    res.json({ success: true, count: (result && result.length) || 0, grades: result || [] });
   } catch (err) {
     console.error('[AI-GRADER][TEST-ALL] Error:', err && err.message);
-    res.status(500).json({ error: 'Fetch failed', details: err && err.message });
+    res.status(500).json({ error: 'Fetch failed', details: err && err.message, stack: err && err.stack });
   }
 });
 
@@ -234,12 +235,12 @@ router.post('/submit', authenticateToken, async (req, res) => {
       // First, try to delete any existing grade for this student/exam
       await db.sql`DELETE FROM ai_grades WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)}`;
       
-      // Then insert the new grade
+      // Then insert the new grade - match actual table columns
       await db.sql`
         INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
         VALUES (${Number(studentId)}, ${Number(examId)}, ${result.score}, ${result.accuracy}, ${result.completeness}, ${result.clarity}, ${result.objectivity}, ${result.feedback}, ${result.raw_response})
       `;
-      console.log('[AI-GRADER][SUBMIT] Grade saved successfully');
+      console.log('[AI-GRADER][SUBMIT] Grade saved successfully to database');
     } catch (dbErr) {
       console.error('[AI-GRADER][SUBMIT] DB SAVE ERROR:', dbErr && dbErr.message);
       console.error('[AI-GRADER][SUBMIT] Stack:', dbErr && dbErr.stack);
