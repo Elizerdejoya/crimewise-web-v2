@@ -801,20 +801,25 @@ const TakeExam = () => {
 
       // Get teacher findings from the question data
       let teacherFindingsForPayload = '';
-      const currentQuestion = exam.questions.find((q) => q.id === currentQuestionId);
-      if (currentQuestion) {
-        if (currentQuestion.explanation) {
-          try {
-            const parsed = JSON.parse(currentQuestion.explanation);
-            if (typeof parsed.explanation === 'string') teacherFindingsForPayload = parsed.explanation;
-            else if (parsed.explanation?.text) teacherFindingsForPayload = parsed.explanation.text;
-            else teacherFindingsForPayload = currentQuestion.answer;
-          } catch {
+      if (exam && exam.questions && Array.isArray(exam.questions)) {
+        const currentQuestion = exam.questions.find((q) => q.id === currentQuestionId);
+        if (currentQuestion) {
+          if (currentQuestion.explanation) {
+            try {
+              const parsed = JSON.parse(currentQuestion.explanation);
+              if (typeof parsed.explanation === 'string') teacherFindingsForPayload = parsed.explanation;
+              else if (parsed.explanation?.text) teacherFindingsForPayload = parsed.explanation.text;
+              else teacherFindingsForPayload = currentQuestion.answer;
+            } catch {
+              teacherFindingsForPayload = currentQuestion.answer || '';
+            }
+          } else {
             teacherFindingsForPayload = currentQuestion.answer || '';
           }
-        } else {
-          teacherFindingsForPayload = currentQuestion.answer || '';
         }
+      } else if (question && question.answer) {
+        // Fallback to question state if questions array doesn't exist
+        teacherFindingsForPayload = question.answer;
       }
 
       const payload = {
