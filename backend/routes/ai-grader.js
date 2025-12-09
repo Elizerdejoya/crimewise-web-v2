@@ -64,6 +64,36 @@ router.get('/test-all', async (req, res) => {
   }
 });
 
+// TEST SUBMIT - No auth required, just test the grading logic
+router.post('/test-submit', async (req, res) => {
+  try {
+    console.log('[AI-GRADER][TEST-SUBMIT] Testing submit endpoint (NO AUTH)');
+    const { studentId, examId, studentFindings, teacherFindings } = req.body;
+    
+    console.log('[AI-GRADER][TEST-SUBMIT] Received:', { studentId, examId, findingsLen: String(studentFindings || '').length });
+    
+    if (!studentId || !examId) {
+      return res.status(400).json({ error: 'Need studentId and examId' });
+    }
+    
+    // Just save to database
+    await db.sql`
+      DELETE FROM ai_grades WHERE student_id = ${Number(studentId)} AND exam_id = ${Number(examId)}
+    `;
+    
+    await db.sql`
+      INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
+      VALUES (${Number(studentId)}, ${Number(examId)}, ${75}, ${75}, ${75}, ${75}, ${75}, ${'Test submission'}, ${'TEST_SUBMIT'})
+    `;
+    
+    console.log('[AI-GRADER][TEST-SUBMIT] Grade saved for student', studentId, 'exam', examId);
+    res.json({ success: true, message: 'Test grade saved', studentId, examId });
+  } catch (err) {
+    console.error('[AI-GRADER][TEST-SUBMIT] Error:', err && err.message);
+    res.status(500).json({ error: err && err.message });
+  }
+});
+
 // Helper functions for grading
 function calculateAccuracy(student, teacher, baseSimilarity) {
   const studentWords = new Set((student || '').toLowerCase().match(/\b\w{3,}\b/g) || []);
