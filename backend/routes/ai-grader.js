@@ -161,12 +161,13 @@ function generateFeedback(score, studentLen, teacherLen) {
 // POST /api/ai-grader/submit
 // Submit findings for instant grading using local string similarity
 router.post('/submit', async (req, res) => {
+  console.log('[AI-GRADER][SUBMIT] ========== POST /SUBMIT CALLED ==========');
+  console.log('[AI-GRADER][SUBMIT] Request body keys:', Object.keys(req.body || {}).join(','));
   try {
-    console.log('[AI-GRADER][SUBMIT] ========== REQUEST RECEIVED ==========');
     const { studentId, examId, studentFindings, teacherFindings: reqTeacherFindings } = req.body;
     
-    console.log('[AI-GRADER][SUBMIT] studentId:', studentId, 'examId:', examId);
-    console.log('[AI-GRADER][SUBMIT] studentFindings type:', typeof studentFindings, 'length:', String(studentFindings || '').length);
+    console.log('[AI-GRADER][SUBMIT] Parsed - studentId:', studentId, 'examId:', examId);
+    console.log('[AI-GRADER][SUBMIT] studentFindings:', typeof studentFindings, String(studentFindings || '').substring(0, 100));
     
     if (!studentId || !examId || !studentFindings) {
       console.error('[AI-GRADER][SUBMIT] Validation failed - missing required fields');
