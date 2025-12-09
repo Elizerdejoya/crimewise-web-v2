@@ -1226,17 +1226,16 @@ const StudentsPage = () => {
               </Button>
               <Button
                 onClick={async () => {
-                  // Validate
-                  if (
-                    editRows.some(
-                      (r) =>
-                        !r.name ||
-                        !r.name.trim() ||
-                        !r.email ||
-                        !r.email.trim() ||
-                        !r.class_id
-                    )
-                  ) {
+                  // Validate - check both editRows and the original data from selected students
+                  const selectedStudents = students.filter((s) => selectedIds.includes(s.id));
+                  const hasInvalidData = editRows.some((r, idx) => {
+                    const origStudent = selectedStudents[idx];
+                    const name = (r.name?.trim() || origStudent?.name?.trim()) || "";
+                    const email = (r.email?.trim() || origStudent?.email?.trim()) || "";
+                    return !name || !email || !r.class_id;
+                  });
+
+                  if (hasInvalidData) {
                     toast({
                       title: "Validation Error",
                       description: "All student names and emails are required.",
@@ -1246,16 +1245,20 @@ const StudentsPage = () => {
                   }
                   // Send to backend (bulk update)
                   try {
+                    const selectedStudents = students.filter((s) => selectedIds.includes(s.id));
                     const updateData = {
-                      students: editRows.map((r) => ({
-                        id: r.id,
-                        name: r.name,
-                        email: r.email,
-                        studentId: r.studentId,
-                        class_id: r.class_id,
-                        course_id: r.course_id,
-                        role: "student",
-                      })),
+                      students: editRows.map((r, idx) => {
+                        const origStudent = selectedStudents[idx];
+                        return {
+                          id: r.id,
+                          name: r.name?.trim() || origStudent?.name || "",
+                          email: r.email?.trim() || origStudent?.email || "",
+                          studentId: r.studentId || origStudent?.student_id || "",
+                          class_id: r.class_id,
+                          course_id: r.course_id,
+                          role: "student",
+                        };
+                      }),
                     };
                     
                     console.log('Sending student update data:', updateData);
