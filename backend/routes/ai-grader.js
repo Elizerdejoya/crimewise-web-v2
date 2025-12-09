@@ -7,17 +7,17 @@ const { authenticateToken } = require('../middleware');
 // TEST ENDPOINT - Direct database write
 router.post('/test-db', async (req, res) => {
   try {
-    console.log('[AI-GRADER][TEST-DB] Testing database connection');
+    console.log('[AI-GRADER][TEST-DB] Testing database INSERT');
     const testResult = await db.sql`
       INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response)
-      VALUES (999, 999, 50, 50, 50, 50, 50, 'Test feedback', 'TEST')
+      VALUES (${999}, ${999}, ${50}, ${50}, ${50}, ${50}, ${50}, ${'Test feedback'}, ${'TEST'})
     `;
     console.log('[AI-GRADER][TEST-DB] Insert successful:', testResult);
-    res.json({ success: true, message: 'Database insert working', result: testResult });
+    res.json({ success: true, message: 'Database insert worked!', result: testResult });
   } catch (err) {
     console.error('[AI-GRADER][TEST-DB] Database error:', err && err.message);
-    console.error('[AI-GRADER][TEST-DB] Stack:', err && err.stack);
-    res.status(500).json({ error: 'Database error', details: err && err.message });
+    console.error('[AI-GRADER][TEST-DB] Full error:', err);
+    res.status(500).json({ error: 'Database error', message: err && err.message, code: err && err.code, detail: err && err.detail, stack: err && err.stack });
   }
 });
 
