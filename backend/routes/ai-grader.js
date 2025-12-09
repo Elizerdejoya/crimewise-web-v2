@@ -21,7 +21,7 @@ router.post('/test-db', async (req, res) => {
   }
 });
 
-// TEST ENDPOINT - Verify table exists
+// TEST ENDPOINT - Verify table exists (NO AUTH REQUIRED)
 router.get('/test-schema', async (req, res) => {
   try {
     console.log('[AI-GRADER][TEST-SCHEMA] Checking table schema');
@@ -34,6 +34,32 @@ router.get('/test-schema', async (req, res) => {
   } catch (err) {
     console.error('[AI-GRADER][TEST-SCHEMA] Error:', err && err.message);
     res.status(500).json({ error: 'Schema check failed', details: err && err.message });
+  }
+});
+
+// SIMPLE TEST - Count rows in ai_grades (NO AUTH)
+router.get('/test-count', async (req, res) => {
+  try {
+    console.log('[AI-GRADER][TEST-COUNT] Counting rows in ai_grades');
+    const result = await db.sql`SELECT COUNT(*) as count FROM ai_grades`;
+    console.log('[AI-GRADER][TEST-COUNT] Row count:', result);
+    res.json({ success: true, rowCount: result[0]?.count || 0, allData: result });
+  } catch (err) {
+    console.error('[AI-GRADER][TEST-COUNT] Error:', err && err.message);
+    res.status(500).json({ error: 'Count failed', details: err && err.message });
+  }
+});
+
+// SIMPLE TEST - Get all grades (NO AUTH)
+router.get('/test-all', async (req, res) => {
+  try {
+    console.log('[AI-GRADER][TEST-ALL] Fetching all grades');
+    const result = await db.sql`SELECT * FROM ai_grades LIMIT 100`;
+    console.log('[AI-GRADER][TEST-ALL] Found', result.length, 'rows');
+    res.json({ success: true, count: result.length, grades: result });
+  } catch (err) {
+    console.error('[AI-GRADER][TEST-ALL] Error:', err && err.message);
+    res.status(500).json({ error: 'Fetch failed', details: err && err.message });
   }
 });
 
