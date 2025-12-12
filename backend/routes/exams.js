@@ -567,32 +567,76 @@ router.post(
 
           // Calculate scores using string similarity
           const stringSimilarity = require('string-similarity');
-          
-          const studentClean = studentFindingsStr.toLowerCase().trim();
-          const teacherClean = teacherFindings.toLowerCase().trim();
-          
+
+          const studentClean = studentFindingsStr ? studentFindingsStr.toLowerCase().trim() : '';
+
+          // Normalize teacher findings: prefer full explanation text when available.
+          // If teacherFindings is a short token (eg. 'fake'/'real') or otherwise short,
+          // attempt to load the question explanation from the DB (exam -> question).
+          let teacherFindingsStr = teacherFindings;
+          if (typeof teacherFindings === 'object') {
+            teacherFindingsStr = teacherFindings.explanation || JSON.stringify(teacherFindings);
+          }
+          try {
+            const tLower = (teacherFindingsStr || '').toString().toLowerCase().trim();
+            if (!teacherFindingsStr || tLower.length < 20 || tLower === 'fake' || tLower === 'real') {
+              // Try to fetch question explanation
+              const qRow = await db.sql`
+                SELECT q.answer, q.explanation
+                FROM exams e
+                JOIN questions q ON e.question_id = q.id
+                WHERE e.id = ${exam_id}
+                LIMIT 1
+              `;
+              if (qRow && qRow.length > 0) {
+                const q = qRow[0];
+                let candidate = null;
+                if (q.explanation) {
+                  try {
+                    const parsed = JSON.parse(q.explanation);
+                    if (typeof parsed === 'string') candidate = parsed;
+                    else if (parsed?.explanation) candidate = typeof parsed.explanation === 'string' ? parsed.explanation : (parsed.explanation.text || null);
+                  } catch (e) {
+                    candidate = q.explanation;
+                  }
+                }
+                if (!candidate && q.answer) {
+                  try {
+                    const parsedA = JSON.parse(q.answer);
+                    if (parsedA?.explanation) candidate = typeof parsedA.explanation === 'string' ? parsedA.explanation : (parsedA.explanation.text || null);
+                    else candidate = typeof parsedA === 'string' ? parsedA : null;
+                  } catch (e) {
+                    candidate = q.answer;
+                  }
+                }
+                if (candidate) teacherFindingsStr = candidate;
+              }
+            }
+          } catch (e) {
+            // ignore and fall back to provided teacherFindingsStr
+          }
+
+          const teacherClean = teacherFindingsStr ? teacherFindingsStr.toLowerCase().trim() : '';
+
           console.log(`[EXAMS][SUBMIT] Comparing findings:`, {
             student: studentClean,
             teacher: teacherClean,
             studentLen: studentClean.length,
             teacherLen: teacherClean.length
           });
-          
+
           // Use multiple similarity metrics
           let similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
-          
+
           console.log(`[EXAMS][SUBMIT] Raw similarity before boost: ${similarity}`);
-          
+
           // Boost score for close matches (within 1-2 character differences)
           const charDiff = Math.abs(studentClean.length - teacherClean.length);
           if (similarity > 0.9 && charDiff <= 2) {
-            // If very similar with only minor length diff, boost to high score
             similarity = 0.98;
           } else if (similarity > 0.85 && charDiff <= 1) {
-            // If already quite similar with 1 char difference, boost more
             similarity = 0.95;
           } else if (similarity > 0.8 && charDiff <= 2) {
-            // If fairly similar with minor diff, boost moderately
             similarity = 0.90;
           }
 
@@ -600,14 +644,14 @@ router.post(
 
           // Accuracy: text similarity (0-100)
           const accuracy = Math.round(similarity * 100);
-          
+
           // Completeness: length match (if student answer is shorter, penalize)
-          const lengthRatio = studentClean.length / teacherClean.length;
+          const lengthRatio = teacherClean.length > 0 ? (studentClean.length / teacherClean.length) : 0;
           const completeness = Math.round(Math.min(lengthRatio, 1) * 100);
-          
+
           // Clarity: if similarity is high, assume clarity is good
           const clarity = Math.round(similarity * 100);
-          
+
           // Objectivity: if similarity is high, assume objectivity is good
           const objectivity = Math.round(similarity * 100);
 
@@ -617,20 +661,16 @@ router.post(
           );
 
           // NEW SCORING FORMULA:
-          // Conclusion: 70% base score
+          // Correct conclusion: 70% base score
+          // Wrong conclusion: 20% base score
           // Findings similarity: 30% additional score based on similarity
-          // Correct conclusion: 70 + (30 * similarity/100)
-          // Wrong conclusion: 0 + (30 * similarity/100)
-          
           let finalScore = 0;
           if (conclusionCorrect === true) {
-            // Correct conclusion: 70% + 30% of similarity score
             finalScore = 70 + (30 * (similarityScore / 100));
           } else {
-            // Wrong conclusion: 0% + 30% of similarity score
-            finalScore = 0 + (30 * (similarityScore / 100));
+            finalScore = 20 + (30 * (similarityScore / 100));
           }
-          
+
           finalScore = Math.round(finalScore);
 
           console.log(`[EXAMS][SUBMIT] Calculated scores:`, { 
