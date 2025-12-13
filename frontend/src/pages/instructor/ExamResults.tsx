@@ -444,6 +444,15 @@ const ExamResults = () => {
   // Helper: compute per-student table percent for an exam (forensic or regular)
   const computeTablePercentForRes = (res: any, ex: any) => {
     try {
+      // If result has been normalized and contains earnedPoints/totalPoints, prefer that
+      const tp = res.totalPoints ?? res.total_points ?? res.total;
+      const ep = res.earnedPoints ?? res.earned_points ?? res.earned ?? res.points_earned;
+      const tpNum = tp !== undefined && tp !== null ? Number(tp) : null;
+      const epNum = ep !== undefined && ep !== null ? Number(ep) : null;
+      if (tpNum !== null && !Number.isNaN(tpNum) && tpNum > 0 && epNum !== null && !Number.isNaN(epNum)) {
+        return Math.round((epNum / tpNum) * 100);
+      }
+
       // Prefer raw_score/raw_total if present (some backends compute these already)
       const rawScoreRaw = res.raw_score ?? res.rawScore ?? res.raw ?? null;
       const rawTotalRaw = res.raw_total ?? res.rawTotal ?? res.raw_total_items ?? null;
@@ -629,24 +638,53 @@ const ExamResults = () => {
     if (!ex || !Array.isArray(ex.results) || ex.results.length === 0) return { avgTable: null, avgFindings: null, combinedAvg: null };
     const tableVals: number[] = [];
     const findingsVals: number[] = [];
+    let earnedSum = 0;
+    let totalSum = 0;
+    let pointsContributors = 0; // number of students contributing to point totals
     ex.results.forEach((r: any, idx: number) => {
-      const t = computeTablePercentForRes(r, ex);
+      const nr = normalizeResultForScoring(r, ex);
+      const t = computeTablePercentForRes(nr, ex);
       // Prefer aiMap (from API fetch) over trying to extract from result object
-      const sid = r.student_id ?? r.studentId ?? r.student;
-      const eid = r.exam_id ?? r.examId ?? r.exam_id;
+      const sid = nr.student_id ?? nr.studentId ?? nr.student;
+      const eid = nr.exam_id ?? nr.examId ?? nr.exam_id ?? ex.id;
       const key = `${sid}_${eid}`;
-      const f = aiMap && aiMap[key] !== undefined ? aiMap[key] : getFindingsPercent(r);
+      const f = aiMap && aiMap[key] !== undefined ? aiMap[key] : getFindingsPercent(nr);
       if (t !== null && t !== undefined) tableVals.push(t);
       if (f !== null && f !== undefined) findingsVals.push(f);
+
+      const tp = nr.totalPoints ?? nr.total_points ?? nr.total ?? null;
+      const ep = nr.earnedPoints ?? nr.earned_points ?? nr.earned ?? null;
+      const tpNum = tp !== null && tp !== undefined ? Number(tp) : null;
+      const epNum = ep !== null && ep !== undefined ? Number(ep) : null;
+      if (tpNum !== null && !Number.isNaN(tpNum) && tpNum > 0 && epNum !== null && !Number.isNaN(epNum)) {
+        totalSum += tpNum;
+        earnedSum += epNum;
+        pointsContributors += 1;
+      }
     });
+
     const avg = (arr: number[]) => arr.length === 0 ? null : Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
-    const avgTable = avg(tableVals);
+    // Compute percent either from aggregated points (preferred) or fallback to mean of percents
+    let avgTable = null;
+    if (totalSum > 0) {
+      avgTable = Math.round((earnedSum / totalSum) * 100);
+    } else {
+      avgTable = avg(tableVals);
+    }
     const avgFindings = avg(findingsVals);
     let combined = null;
     if (avgTable !== null && avgFindings !== null) combined = Math.round((avgTable + avgFindings) / 2);
     else if (avgTable !== null) combined = avgTable;
     else if (avgFindings !== null) combined = avgFindings;
-    return { avgTable, avgFindings, combinedAvg: combined };
+    // Prefer returning per-student average points for display (e.g., 1/3) instead of aggregated sums (e.g., 2/6)
+    let avgTablePoints = null;
+    if (totalSum > 0 && pointsContributors > 0) {
+      const earnedPerStudent = Math.round(earnedSum / pointsContributors);
+      const totalPerStudent = Math.round(totalSum / pointsContributors);
+      avgTablePoints = { earned: earnedPerStudent, total: totalPerStudent };
+    }
+
+    return { avgTable, avgFindings, combinedAvg: combined, avgTablePoints };
   };
 
   // Helper: derive maximum possible points for the table portion of an exam
@@ -1148,7 +1186,7 @@ const ExamResults = () => {
 
     // Ensure AI grades fetched and used to compute averages so Findings appear immediately in the exported PDF
     const fetchedMapForPDF = await fetchAiGradesForResults(exam.results) || {};
-    const { avgTable, avgFindings, combinedAvg } = computeExamAverages(exam, fetchedMapForPDF);
+    const { avgTable, avgFindings, combinedAvg, avgTablePoints } = computeExamAverages(exam, fetchedMapForPDF);
 
     // Add top logo if available, centered
     let headerOffset = 0;
@@ -1179,9 +1217,15 @@ const ExamResults = () => {
     doc.text(`Participants: ${exam.participants || 0}`, 14, 42);
     const tableMaxForPdf = getTableMaxPoints(exam);
     const findingsMaxForPdf = getFindingsMaxPoints(exam);
-    const avgTablePts = pointsFromPercent(avgTable, tableMaxForPdf);
     const avgFindingsPts = pointsFromPercent(avgFindings, findingsMaxForPdf);
-    const avgText = `Table: ${avgTable !== null ? avgTable + '%' + (avgTablePts !== null && tableMaxForPdf !== null ? ` (${avgTablePts}/${tableMaxForPdf})` : '') : '-'}  Findings: ${avgFindings !== null ? avgFindings + '%' + (avgFindingsPts !== null && findingsMaxForPdf !== null ? ` (${avgFindingsPts}/${findingsMaxForPdf})` : '') : '-'}  Combined: ${combinedAvg !== null ? combinedAvg + '%' : '-'}`;
+    let avgTablePtsDisplay = null;
+    if (avgTablePoints && avgTablePoints.total) {
+      avgTablePtsDisplay = `${avgTablePoints.earned}/${avgTablePoints.total}`;
+    } else {
+      const avgTablePts = pointsFromPercent(avgTable, tableMaxForPdf);
+      avgTablePtsDisplay = (avgTablePts !== null && tableMaxForPdf !== null) ? `${avgTablePts}/${tableMaxForPdf}` : null;
+    }
+    const avgText = `Table: ${avgTable !== null ? avgTable + '%' + (avgTablePtsDisplay !== null ? ` (${avgTablePtsDisplay})` : '') : '-'}  Findings: ${avgFindings !== null ? avgFindings + '%' + (avgFindingsPts !== null && findingsMaxForPdf !== null ? ` (${avgFindingsPts}/${findingsMaxForPdf})` : '') : '-'}  Combined: ${combinedAvg !== null ? combinedAvg + '%' : '-'}`;
     doc.text(`Average Score: ${avgText}`, 14, 47);
 
     // Add student results if available
@@ -1189,6 +1233,7 @@ const ExamResults = () => {
       if (exam.question_type === "forensic" && exam.answer_key) {
         // Process forensic exam results
         const tableRows = exam.results.map((res: any) => {
+          const nr = normalizeResultForScoring(res, exam);
           let parsedAnswer = [];
           let parsedKey = [];
           let columns = [];
@@ -1257,11 +1302,17 @@ const ExamResults = () => {
         // Regular exam results
         autoTable(doc, {
           head: [["Student", "Score", "Date Taken"]],
-          body: exam.results.map((r: any) => [
-            r.student_name || r.student_id,
-            r.score !== undefined ? `${r.score}/${exam.totalItemScore || exam.points || 100} (${Math.round((r.score / (exam.totalItemScore || exam.points || 100)) * 100)}%)` : '-',
-            r.date || '-'
-          ]),
+          body: exam.results.map((r: any) => {
+            const nr = normalizeResultForScoring(r, exam);
+            const tableMax = getTableMaxPoints(exam) ?? (exam.totalItemScore ?? exam.points ?? 100);
+            const earned = nr.earnedPoints ?? (nr.score !== undefined && nr.score !== null ? Math.round((Number(nr.score) / 100) * tableMax) : null);
+            const ptsText = (earned !== null && tableMax) ? `${earned}/${tableMax} (${nr.score ?? Math.round((earned / tableMax) * 100)}%)` : (nr.score !== undefined ? `${nr.score}%` : '-');
+            return [
+              r.student_name || r.student_id,
+              ptsText,
+              r.date || '-'
+            ];
+          }),
           startY: 50,
         });
       }
@@ -1408,19 +1459,32 @@ const ExamResults = () => {
     // Calculate the total item score
     // Note: total items removed from print view per request; score helpers handle missing totals robustly
 
+    // Normalize results so we can consistently show earned/total points like the student dashboard
+    const normalizedResults = Array.isArray(exam.results) ? exam.results.map((r: any) => normalizeResultForScoring(r, exam)) : [];
+
     // Ensure AI grades are loaded for these results so Findings percent displays
     try {
-      if (exam.results && Array.isArray(exam.results) && exam.results.length > 0) {
+      if (normalizedResults && normalizedResults.length > 0) {
         // fetch and get a map of scores so we can use them immediately in this function
         // (setState inside fetchAiGradesForResults will also update component state)
-        var fetchedAiMap = await fetchAiGradesForResults(exam.results) || {};
+        var fetchedAiMap = await fetchAiGradesForResults(normalizedResults) || {};
       }
     } catch (e) {
       // continue even if AI grade fetch fails
     }
 
     // compute averages using fetched AI scores (if any) so they appear immediately
-    const { avgTable, avgFindings, combinedAvg } = computeExamAverages(exam, typeof fetchedAiMap !== 'undefined' ? fetchedAiMap : undefined);
+    const { avgTable, avgFindings, combinedAvg, avgTablePoints } = computeExamAverages(exam, typeof fetchedAiMap !== 'undefined' ? fetchedAiMap : undefined);
+
+    // Prepare display string for avg table points (use aggregated points when available)
+    const tableMaxForPrint = getTableMaxPoints(exam);
+    let avgTablePtsDisplayInline: string | null = null;
+    if (avgTablePoints && avgTablePoints.total) {
+      avgTablePtsDisplayInline = `${avgTablePoints.earned}/${avgTablePoints.total}`;
+    } else {
+      const fallbackPts = pointsFromPercent(avgTable, tableMaxForPrint);
+      avgTablePtsDisplayInline = (fallbackPts !== null && tableMaxForPrint !== null) ? `${fallbackPts}/${tableMaxForPrint}` : null;
+    }
 
     // Start writing a cleaner HTML report (header, info, and results table)
     const topLogoUrl = new URL(topLogo, window.location.href).href;
@@ -1454,7 +1518,7 @@ const ExamResults = () => {
             <div class="info-item"><strong>Participants:</strong> ${exam.participants || 0}</div>
             <div class="info-item"><strong>Token:</strong> <span style="font-family:monospace">${exam.token || '-'}</span></div>
             <!-- Total Items removed -->
-            <div class="info-item"><strong>Average (Table):</strong> ${avgTable !== null ? (avgTable + '%' + (pointsFromPercent(avgTable, getTableMaxPoints(exam)) !== null && getTableMaxPoints(exam) !== null ? ` (${pointsFromPercent(avgTable, getTableMaxPoints(exam))}/${getTableMaxPoints(exam)})` : '')) : '-'}</div>
+            <div class="info-item"><strong>Average (Table):</strong> ${avgTable !== null ? (avgTable + '%' + (avgTablePtsDisplayInline !== null ? ` (${avgTablePtsDisplayInline} pts)` : '')) : '-'}</div>
             <div class="info-item"><strong>Average (Findings):</strong> ${avgFindings !== null ? (avgFindings + '%' + (pointsFromPercent(avgFindings, getFindingsMaxPoints(exam)) !== null && getFindingsMaxPoints(exam) !== null ? ` (${pointsFromPercent(avgFindings, getFindingsMaxPoints(exam))}/${getFindingsMaxPoints(exam)})` : '')) : '-'}</div>
           </div>
 
@@ -1472,20 +1536,20 @@ const ExamResults = () => {
             <tbody>
     `);
 
-    if (exam.results && Array.isArray(exam.results) && exam.results.length > 0) {
+    if (normalizedResults && Array.isArray(normalizedResults) && normalizedResults.length > 0) {
       const tableMaxForPrint = getTableMaxPoints(exam);
       const findingsMaxForPrint = getFindingsMaxPoints(exam);
-      exam.results.forEach((res: any, idx: number) => {
+      normalizedResults.forEach((res: any, idx: number) => {
         const tablePercent = computeTablePercentForRes(res, exam);
         const key = `${res.student_id ?? res.studentId ?? res.student}_${exam.id ?? exam.exam_id ?? exam.id}`;
         const aiFromMap = (typeof fetchedAiMap !== 'undefined' && fetchedAiMap[key] !== undefined) ? fetchedAiMap[key] : aiScores[key];
         const findingsPercent = aiFromMap !== undefined ? aiFromMap : getFindingsPercent(res);
-        const tablePts = pointsFromPercent(tablePercent, tableMaxForPrint);
+        const tablePts = res.totalPoints !== undefined && res.totalPoints !== null ? `${res.earnedPoints ?? Math.round((tablePercent/100) * (res.totalPoints))}/${res.totalPoints}` : (pointsFromPercent(tablePercent, tableMaxForPrint) !== null ? `${pointsFromPercent(tablePercent, tableMaxForPrint)}/${tableMaxForPrint}` : null);
         const findingsPts = pointsFromPercent(findingsPercent, findingsMaxForPrint);
         printWindow.document.write(`
           <tr>
             <td>${studentLabel(res, idx)}</td>
-            <td>${tablePercent !== null ? (tablePercent + '%' + (tablePts !== null && tableMaxForPrint !== null ? ` (${tablePts}/${tableMaxForPrint} pts)` : '')) : '-'}</td>
+            <td>${tablePercent !== null ? (tablePts !== null ? (tablePercent + '%' + ` (${tablePts} pts)`) : (tablePercent + '%')) : '-'}</td>
             <td>${findingsPercent !== null ? (findingsPercent + '%' + (findingsPts !== null && findingsMaxForPrint !== null ? ` (${findingsPts}/${findingsMaxForPrint} pts)` : '')) : '-'}</td>
             <td>${formatDate(res.date)}</td>
             <td>${res.tab_switches !== undefined ? res.tab_switches : '-'}</td>
@@ -2028,10 +2092,16 @@ const ExamResults = () => {
                       {/* Avg Table Score */}
                       <TableCell className="hidden md:table-cell">{(() => {
                         try {
-                          const { avgTable } = computeExamAverages(exam, aiScores);
-                          const tableMax = getTableMaxPoints(exam);
-                          const pts = pointsFromPercent(avgTable, tableMax);
-                          if (avgTable !== null) return `${avgTable}%${pts !== null && tableMax !== null ? ` (${pts}/${tableMax} pts)` : ''}`;
+                          const { avgTable, avgTablePoints } = computeExamAverages(exam, aiScores);
+                          let ptsText = null;
+                          if (avgTablePoints && avgTablePoints.total) {
+                            ptsText = `${avgTablePoints.earned}/${avgTablePoints.total} pts`;
+                          } else {
+                            const tableMax = getTableMaxPoints(exam);
+                            const pts = pointsFromPercent(avgTable, tableMax);
+                            if (pts !== null && tableMax !== null) ptsText = `${pts}/${tableMax} pts`;
+                          }
+                          if (avgTable !== null) return `${avgTable}%${ptsText ? ` (${ptsText})` : ''}`;
                           return '-';
                         } catch (e) {
                           return '-';
