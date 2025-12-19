@@ -40,3 +40,21 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Login page enhancements: subtle floating blobs and smooth card transitions */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.logo-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.card {
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 25px 50px rgba(16,24,40,0.08);
+}
