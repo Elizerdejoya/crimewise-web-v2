@@ -227,8 +227,8 @@ const TakeExam = () => {
   const [studentConclusion, setStudentConclusion] = useState<string>("");
   const [explanation, setExplanation] = useState<string>("");
   const [scoringDetails, setScoringDetails] = useState<any>(null);
-  const [showLeaveDialog, setShowLeaveDialog] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -249,6 +249,67 @@ const TakeExam = () => {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [toast]);
+
+  // Copy-paste prevention
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "v" || e.key === "x")) {
+        e.preventDefault();
+        toast({
+          title: "Not Allowed",
+          description: "Copy, paste, and cut are disabled during exams for integrity.",
+          variant: "destructive",
+          duration: 3000,
+        });
+      }
+    };
+    const handleCopy = (e: ClipboardEvent) => e.preventDefault();
+    const handleDragStart = (e: DragEvent) => e.preventDefault();
+
+    document.addEventListener("contextmenu", handleContextMenu);
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("copy", handleCopy);
+    document.addEventListener("dragstart", handleDragStart);
+
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("copy", handleCopy);
+      document.removeEventListener("dragstart", handleDragStart);
+    };
+  }, [toast]);
+
+  // Fullscreen enforcement
+  useEffect(() => {
+    const requestFullscreen = async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+          setIsFullscreen(true);
+        }
+      } catch (err) {
+        console.error("Fullscreen request failed:", err);
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+        toast({
+          title: "Warning",
+          description: "Fullscreen mode exited. Please return to fullscreen to continue the exam.",
+          variant: "destructive",
+          duration: 5000,
+        });
+        requestFullscreen();
+      }
+    };
+
+    requestFullscreen();
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, [toast]);
 
   // Prevent accidental navigation
@@ -928,15 +989,7 @@ const TakeExam = () => {
     }
   };
 
-  const handleBackClick = () => {
-    setShowLeaveDialog(true);
-  };
-
-  const handleConfirmLeave = () => {
-    sessionStorage.removeItem("currentExam");
-    sessionStorage.removeItem("examStartTimestamp");
-    navigate("/student");
-  };
+  // Leave exam functionality removed for exam integrity
 
   if (!exam || !question) return <Loading fullScreen message="Loading exam..." />;
 
@@ -1139,38 +1192,66 @@ const TakeExam = () => {
   );
 
   return (
-    <div className="container max-w-4xl mx-auto px-2 py-4">
-      {/* Sticky header with timer and leave button (styled like submit) */}
-      <div className="sticky top-0 z-10 bg-primary text-primary-foreground py-2 mb-4 border-b flex justify-between items-center px-4 w-full">
-        <Button onClick={handleBackClick} size="sm" className="bg-red-600 text-white hover:bg-red-700">
-          Leave Exam
-        </Button>
-        <div className="text-3xl font-mono px-4 py-2 rounded-md">
-          {formatTime(timeLeft)}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100">
+      {/* Professional header with timer and exam info */}
+      <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
+        <div className="container max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-slate-900">{exam.name}</h2>
+            <p className="text-xs text-slate-500 mt-1">Exam in Progress</p>
+          </div>
+          <div className="flex items-center gap-6">
+            {tabSwitchCount > 0 && (
+              <span className="px-3 py-1 bg-red-50 border border-red-200 text-red-700 rounded-full text-xs font-medium">
+                ⚠️ {tabSwitchCount} tab switch{tabSwitchCount > 1 ? "es" : ""}
+              </span>
+            )}
+            {!isFullscreen && (
+              <span className="px-3 py-1 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-full text-xs font-medium animate-pulse">
+                ⚠️ Fullscreen required
+              </span>
+            )}
+            <div className="text-center">
+              <div className={`text-4xl font-mono font-bold ${timeLeft <= 60 ? "text-red-600" : "text-slate-900"}`}>
+                {formatTime(timeLeft)}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Time Left</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      <Card className="mb-4">
-        <CardHeader className="py-3 px-4">
-          <CardTitle className="text-lg">
-            {exam.name} - Question
-            {tabSwitchCount > 0 && (
-              <span className="ml-2 text-sm text-red-500 font-normal">
-                Tab switched {tabSwitchCount} times
-              </span>
-            )}
-          </CardTitle>
+      <div className="container max-w-6xl mx-auto px-4 py-8">
+
+      <Card className="mb-6 shadow-lg border-0">
+        <CardHeader className="py-4 px-6 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200 rounded-t-lg">
+          <CardTitle className="text-2xl font-bold text-slate-900">📝 Question</CardTitle>
+          <p className="text-sm text-slate-600 mt-2">Read carefully and provide your forensic analysis</p>
         </CardHeader>
-        <CardContent className="py-3 px-4 space-y-4">
-          <p>{question.text}</p>
+        <CardContent className="py-6 px-6 space-y-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-slate-900 text-base leading-relaxed">{question.text}</p>
+          </div>
           {rubrics && (
-            <div className="bg-gray-50 border rounded-md p-3 text-sm">
-              <div className="font-semibold mb-1">Instructor rubric weights</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><strong>Accuracy</strong><div className="text-muted-foreground">{rubrics.accuracy}%</div></div>
-                <div><strong>Completeness</strong><div className="text-muted-foreground">{rubrics.completeness}%</div></div>
-                <div><strong>Clarity</strong><div className="text-muted-foreground">{rubrics.clarity}%</div></div>
-                <div><strong>Objectivity</strong><div className="text-muted-foreground">{rubrics.objectivity}%</div></div>
+            <div className="bg-gradient-to-r from-amber-50 to-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="font-semibold mb-3 text-amber-900 flex items-center gap-2">🏆 Grading Rubric Weights</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white rounded-lg p-3 border border-amber-100">
+                  <div className="text-sm font-semibold text-slate-900">Accuracy</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.accuracy}%</div>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-amber-100">
+                  <div className="text-sm font-semibold text-slate-900">Completeness</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.completeness}%</div>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-amber-100">
+                  <div className="text-sm font-semibold text-slate-900">Clarity</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.clarity}%</div>
+                </div>
+                <div className="bg-white rounded-lg p-3 border border-amber-100">
+                  <div className="text-sm font-semibold text-slate-900">Objectivity</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.objectivity}%</div>
+                </div>
               </div>
             </div>
           )}
@@ -1178,103 +1259,100 @@ const TakeExam = () => {
 
           {/* Forensic Conclusion Selection - only show for forensic questions */}
           {question.type === "forensic" && (
-            <div className="space-y-2 mt-6 border-t pt-4">
-              <label className="block text-sm font-medium">
-                Forensic Conclusion <span className="text-red-500">*</span>
+            <div className="space-y-4 mt-6 border-t pt-6">
+              <label className="block text-base font-bold text-slate-900">
+                🔍 Forensic Conclusion <span className="text-red-500">*</span>
               </label>
-              <div className="flex flex-col md:flex-row gap-2">
+              <div className="flex flex-col md:flex-row gap-3">
                 <Button
                   type="button"
-                  variant={studentConclusion === "fake" ? "default" : "outline"}
                   onClick={() => setStudentConclusion("fake")}
-                  className="flex-1 w-full"
+                  className={`flex-1 w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+                    studentConclusion === "fake"
+                      ? "bg-red-600 hover:bg-red-700 text-white shadow-lg"
+                      : "bg-white border-2 border-red-200 text-red-700 hover:bg-red-50"
+                  }`}
                 >
-                  Not Written by the Same Person
+                  ❌ Not Written by the Same Person
                 </Button>
                 <Button
                   type="button"
-                  variant={studentConclusion === "real" ? "default" : "outline"}
                   onClick={() => setStudentConclusion("real")}
-                  className="flex-1 w-full"
+                  className={`flex-1 w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
+                    studentConclusion === "real"
+                      ? "bg-green-600 hover:bg-green-700 text-white shadow-lg"
+                      : "bg-white border-2 border-green-200 text-green-700 hover:bg-green-50"
+                  }`}
                 >
-                  Written by the Same Person
+                  ✅ Written by the Same Person
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                <strong>Required:</strong> Select whether you believe the specimen is fake or real based on your analysis.
-                This selection will affect your exam score.
-              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-900">
+                  <strong>⚠️ Required:</strong> Select whether you believe the specimen is fake or real based on your forensic analysis.
+                  This conclusion directly impacts your exam score.
+                </p>
+              </div>
             </div>
           )}
 
           {/* Explanation field */}
-          <div className="space-y-2 mt-6 border-t pt-4">
-            <label htmlFor="explanation" className="block text-sm font-medium">
-              Findings
+          <div className="space-y-3 mt-6 border-t pt-6">
+            <label htmlFor="explanation" className="block text-base font-bold text-slate-900">
+              📋 Additional Findings
             </label>
             <textarea
               id="explanation"
-              rows={4}
-              className="w-full px-3 py-2 border rounded-md text-sm"
-              placeholder="Provide any additional explanation for your answers... "
+              rows={5}
+              className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              placeholder="Provide any additional explanation for your answers and forensic observations..."
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
             ></textarea>
-            <p className="text-xs text-muted-foreground">
-              This explanation will be reviewed by your instructor.
-              Your grade is based on the table answers and the fake/real conclusion above.
+            <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-3">
+              <strong>ℹ️ Note:</strong> This explanation will be reviewed by your instructor.
+              Your grade is based on the table answers, forensic conclusion, and this explanation.
             </p>
           </div>
 
-          <div className="flex justify-end mt-4">
-            <Button onClick={handleConfirmSubmit}>Submit Exam</Button>
+          <div className="flex justify-end mt-8">
+            <Button
+              onClick={handleConfirmSubmit}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:shadow-xl transition-all text-base"
+            >
+              🚀 Submit Exam
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Leave Confirmation Dialog */}
-      <AlertDialog open={showLeaveDialog} onOpenChange={setShowLeaveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to leave?</AlertDialogTitle>
-            <AlertDialogDescription>
-              If you leave now, your exam progress will be lost and you may not
-              be able to retake this exam.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmLeave}
-              className="bg-red-500 hover:bg-red-600"
-            >
-              Yes, leave exam
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Submit Confirmation Dialog */}
       <AlertDialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Submit your exam?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-2xl font-bold text-slate-900">🚀 Submit Your Exam?</AlertDialogTitle>
+            <AlertDialogDescription className="text-base mt-3 text-slate-700">
               {timeLeft <= 0
-                ? "Time's up! Your exam will be submitted now."
+                ? "⏰ Time's up! Your exam will be submitted automatically now."
                 : "Are you sure you want to submit your exam? You won't be able to change your answers after submission."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="gap-3 mt-6">
             {timeLeft > 0 && (
-              <AlertDialogCancel>Continue working</AlertDialogCancel>
+              <AlertDialogCancel className="font-semibold">
+                Continue working
+              </AlertDialogCancel>
             )}
-            <AlertDialogAction onClick={handleSubmit} className="bg-primary">
+            <AlertDialogAction
+              onClick={handleSubmit}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold"
+            >
               Submit exam
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 };

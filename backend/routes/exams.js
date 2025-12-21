@@ -266,6 +266,24 @@ router.get(
       const userId = req.user.id;
       const userOrgId = req.user.organization_id;
 
+      // Check for one-session-per-user: prevent multiple active exam sessions
+      if (req.user.role === "student") {
+        const activeSession = await db.sql`
+        SELECT r.id FROM results r
+        JOIN exams e ON r.exam_id = e.id
+        WHERE r.student_id = ${userId} 
+          AND r.status IN ('in_progress', 'submitted')
+          AND (e.end AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::timestamp > NOW()
+        LIMIT 1
+      `;
+
+        if (activeSession && activeSession.length > 0) {
+          return res.status(409).json({ 
+            error: "You already have an active exam session in progress. You cannot start another exam until the current one is submitted or expires." 
+          });
+        }
+      }
+
       // Get exam details - convert from UTC back to Manila time for display
       const rows = await db.sql`
       SELECT 
