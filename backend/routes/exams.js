@@ -272,7 +272,7 @@ router.get(
         SELECT r.id FROM results r
         JOIN exams e ON r.exam_id = e.id
         WHERE r.student_id = ${userId} 
-          AND r.status IN ('in_progress', 'submitted')
+          AND r.status = 'in_progress'
           AND (e.end AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::timestamp > NOW()
         LIMIT 1
       `;
