@@ -10,22 +10,19 @@ import { API_BASE_URL } from "@/lib/config";
 import logoImage from "@/assets/logo.png";
 import { Eye, EyeOff } from "lucide-react";
 import { LogIn } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // On mount, check if user is already logged in and redirect, or load remembered email
+  // On mount, check if user is already logged in and redirect
   useEffect(() => {
     const user = getCurrentUser();
     if (user) {
-      // User is already logged in, redirect to appropriate dashboard
       if (user.role === 'admin' || user.role === 'super_admin') {
         navigate('/admin', { replace: true });
       } else if (user.role === 'instructor') {
@@ -34,12 +31,7 @@ const Login = () => {
         navigate('/student', { replace: true });
       }
     }
-    // Load remembered email if it exists
-    const savedEmail = localStorage.getItem('rememberedEmail');
-    if (savedEmail) {
-      setEmail(savedEmail);
-      setRememberMe(true);
-    }
+    // Remember-me feature removed: nothing to load here
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,12 +49,7 @@ const Login = () => {
 
       if (res.ok) {
         localStorage.setItem("token", data.token);
-        // Save email if remember me is checked
-        if (rememberMe) {
-          localStorage.setItem("rememberedEmail", email);
-        } else {
-          localStorage.removeItem("rememberedEmail");
-        }
+        // Remember-me removed: do not store rememberedEmail
         // Redirect based on role from server response
         if (data.role === "super_admin") navigate("/admin/organizations");
         else if (data.role === "admin") navigate("/admin");
@@ -127,7 +114,10 @@ const Login = () => {
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <Label htmlFor="password">Password</Label>
-            <a href="/forgot-password" className="text-xs text-primary hover:text-primary/80 transition-colors duration-200">
+            <a
+              href="/forgot-password"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-transform duration-200 hover:translate-x-1"
+            >
               Forgot password?
             </a>
           </div>
@@ -159,20 +149,7 @@ const Login = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="remember"
-            checked={rememberMe}
-            onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-            className="transition-all duration-200"
-          />
-          <label
-            htmlFor="remember"
-            className="text-sm font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors duration-200"
-          >
-            Remember me
-          </label>
-        </div>
+        {/* Remember me removed intentionally */}
 
         <Button
           type="submit"
