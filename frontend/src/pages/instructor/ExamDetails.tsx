@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { API_BASE_URL } from "@/lib/config";
+import Loading from "@/components/ui/Loading";
 
 const ExamDetails = () => {
   const { examId } = useParams();
@@ -22,7 +23,7 @@ const ExamDetails = () => {
     });
   }, [examId]);
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <Loading fullScreen message="Loading exam details..." />;
   if (!exam) return <div className="p-8">Exam not found.</div>;
 
   return (

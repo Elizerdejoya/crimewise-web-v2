@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import { Book, Calendar, FileText, TrendingUp, Users, Award } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
 import { useToast } from "@/hooks/use-toast";
+import Loading from "@/components/ui/Loading";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
 // Helper function to create auth headers
@@ -554,7 +555,7 @@ const InstructorDashboard = () => {
 
   // (reverted: per-exam background score fetching removed)
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <Loading fullScreen message="Loading dashboard..." />;
 
   return (
     <DashboardLayout>

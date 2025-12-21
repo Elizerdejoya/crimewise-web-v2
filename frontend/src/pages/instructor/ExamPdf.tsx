@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE_URL } from "@/lib/config";
+import Loading from "@/components/ui/Loading";
 
 const ExamPdf = () => {
   const { examId } = useParams();
@@ -21,7 +22,7 @@ const ExamPdf = () => {
     });
   }, [examId]);
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <Loading fullScreen message="Preparing PDF..." />;
   if (!exam) return <div className="p-8">Exam not found.</div>;
 
   return (

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import Loading from "@/components/ui/Loading";
 import { Plus, Edit, Trash2, Search, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { API_BASE_URL } from "@/lib/config";
@@ -129,9 +130,7 @@ const KeywordPools: React.FC = () => {
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading keyword pools...</div>
-        </div>
+        <Loading fullScreen message="Loading keyword pools..." />
       </DashboardLayout>
     );
   }

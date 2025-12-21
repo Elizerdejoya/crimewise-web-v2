@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ZoomIn, ZoomOut, X, Tags } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
+import Loading from "@/components/ui/Loading";
 
 // Helper function to create auth headers
 const getAuthHeaders = () => {
@@ -937,7 +938,7 @@ const TakeExam = () => {
     navigate("/student");
   };
 
-  if (!exam || !question) return <div className="p-4">Loading...</div>;
+  if (!exam || !question) return <Loading fullScreen message="Loading exam..." />;
 
   // Render answer input based on question type
   let answerInput = null;
