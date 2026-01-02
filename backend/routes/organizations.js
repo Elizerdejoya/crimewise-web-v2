@@ -115,6 +115,19 @@ router.post(
     `;
 
       res.status(201).json(organization);
+        // If admin credentials are provided, create the admin user for this organization
+        const { admin_email, admin_password } = req.body;
+        if (admin_email && admin_password) {
+          try {
+            await db.sql`
+              INSERT INTO users (name, email, password, role, status, organization_id)
+              VALUES (${name + " Admin"}, ${admin_email}, ${admin_password}, 'admin', 'active', ${organization.id})
+            `;
+          } catch (userErr) {
+            console.error('[ORGANIZATIONS][POST] Failed to create admin user:', userErr && userErr.message ? userErr.message : userErr);
+            // Organization created successfully, but admin user creation failed - don't block the response
+          }
+        }
     } catch (err) {
       console.log("[ORGANIZATIONS][POST] Error:", err.message);
       if (err.message.includes("UNIQUE constraint failed")) {
