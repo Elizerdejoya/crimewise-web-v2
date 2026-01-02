@@ -37,6 +37,8 @@ import {
   Users,
   Calendar,
   DollarSign,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -48,6 +50,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +79,8 @@ type Organization = {
   subscription_status?: string;
   subscription_end_date?: string;
   user_count?: number;
+  admin_email?: string;
+  admin_password?: string;
 };
 
 const AdminOrganizationsPage = () => {
@@ -241,6 +250,24 @@ const AdminOrganizationsPage = () => {
       });
       return;
     }
+    // Validate admin email/password
+    if (!(newOrganization as any).admin_email || !(newOrganization as any).admin_password) {
+      toast({
+        title: "Validation Error",
+        description: "Admin email and password are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    // Validate admin email/password
+    if (!(newOrganization as any).admin_email || !(newOrganization as any).admin_password) {
+      toast({
+        title: "Validation Error",
+        description: "Admin email and password are required.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -266,6 +293,8 @@ const AdminOrganizationsPage = () => {
           name: "",
           domain: "",
           contact_email: "",
+          admin_email: "",
+          admin_password: "",
           contact_phone: "",
           address: "",
           status: "active",
@@ -466,7 +495,7 @@ const AdminOrganizationsPage = () => {
                         ))}
                     </Button>
                   </TableHead>
-                  <TableHead>Contact</TableHead>
+                  <TableHead>Admin</TableHead>
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -526,11 +555,15 @@ const AdminOrganizationsPage = () => {
                       <TableCell>{org.domain}</TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div>{org.contact_email}</div>
-                          {org.contact_phone && (
-                            <div className="text-muted-foreground">
-                              {org.contact_phone}
-                            </div>
+                          {(org as any).admin_email ? (
+                            <a
+                              href={`mailto:${(org as any).admin_email}`}
+                              className="text-sm hover:underline"
+                            >
+                              {(org as any).admin_email}
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
                           )}
                         </div>
                       </TableCell>
@@ -651,6 +684,95 @@ const AdminOrganizationsPage = () => {
                   }
                 />
               </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="admin_email">Admin Email *</Label>
+                    <Input
+                      id="admin_email"
+                      type="email"
+                      value={(newOrganization as any).admin_email || ''}
+                      onChange={(e) =>
+                        setNewOrganization({
+                          ...newOrganization,
+                          admin_email: e.target.value,
+                        })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This email will be created as the organization admin account.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="admin_password">Admin Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="admin_password"
+                        type={showAdminPassword ? 'text' : 'password'}
+                        value={(newOrganization as any).admin_password || ''}
+                        onChange={(e) =>
+                          setNewOrganization({
+                            ...newOrganization,
+                            admin_password: e.target.value,
+                          })
+                        }
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPassword(!showAdminPassword)}
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                        tabIndex={-1}
+                      >
+                        {showAdminPassword ? (
+                          <EyeOff className="h-4 w-4" aria-hidden="true" />
+                        ) : (
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        )}
+                        <span className="sr-only">
+                          {showAdminPassword ? 'Hide password' : 'Show password'}
+                        </span>
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Initial admin password. Can be changed later.
+                    </p>
+                  </div>
+                </div>
+                <Collapsible defaultOpen={false}>
+                  <CollapsibleTrigger className="text-sm text-primary hover:underline">Advanced options</CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-3 space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="address2">Address</Label>
+                        <Input
+                          id="address2"
+                          value={newOrganization.address}
+                          onChange={(e) =>
+                            setNewOrganization({
+                              ...newOrganization,
+                              address: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="phone2">Contact Phone</Label>
+                          <Input
+                            id="phone2"
+                            value={newOrganization.contact_phone}
+                            onChange={(e) =>
+                              setNewOrganization({
+                                ...newOrganization,
+                                contact_phone: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="plan">Subscription Plan</Label>
