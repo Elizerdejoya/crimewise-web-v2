@@ -38,21 +38,21 @@ async function initializeSchema() {
   try {
     console.log('[DB] Checking PostgreSQL schema...');
 
-    // Check if ai_findings table exists
-    const checkTable = await client.query(`
+    // Check if exam_sessions table already exists (most recent addition)
+    const checkSessionsTable = await client.query(`
       SELECT EXISTS(
         SELECT 1 FROM information_schema.tables 
-        WHERE table_schema = 'public' AND table_name = 'ai_findings'
+        WHERE table_schema = 'public' AND table_name = 'exam_sessions'
       )
     `);
     
-    if (checkTable.rows[0].exists) {
-      console.log('[DB] ✓ PostgreSQL schema verified (ai_findings table exists)');
+    if (checkSessionsTable.rows[0].exists) {
+      console.log('[DB] ✓ PostgreSQL schema verified (exam_sessions table exists)');
       return true;
     }
 
     // Tables don't exist, create them
-    console.log('[DB] Creating PostgreSQL findings table...');
+    console.log('[DB] Creating PostgreSQL findings and sessions tables...');
     
     // Create ai_findings table - Clean, simple structure
     // Stores student findings and teacher findings for comparison
@@ -76,12 +76,28 @@ async function initializeSchema() {
       )
     `);
     console.log('[DB] Created ai_findings table');
+
+    // Create exam_sessions table for tracking active exam sessions
+    // WITHOUT foreign key constraints since users/exams may be in different schema
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS exam_sessions (
+        id SERIAL PRIMARY KEY,
+        student_id INTEGER NOT NULL,
+        exam_id INTEGER NOT NULL,
+        session_start TIMESTAMP NOT NULL,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(student_id, exam_id)
+      )
+    `);
+    console.log('[DB] Created exam_sessions table');
     
     // Create indexes for faster queries
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_student_exam ON ai_findings(student_id, exam_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_exam ON ai_findings(exam_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_ai_findings_student ON ai_findings(student_id)`);
-    console.log('[DB] ✓ Findings table created successfully');
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_exam_sessions_student_exam ON exam_sessions(student_id, exam_id)`);
+    console.log('[DB] ✓ Findings and sessions tables created successfully');
     
     return true;
   } catch (err) {

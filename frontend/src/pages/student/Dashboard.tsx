@@ -13,6 +13,7 @@ import {
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Calendar, FileText, TrendingUp } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
+import Loading from "@/components/ui/Loading";
 import { useToast } from "@/hooks/use-toast";
 import { authenticatedFetch } from "@/lib/auth";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend as RechartsLegend, ResponsiveContainer } from "recharts";
@@ -150,7 +151,7 @@ const StudentDashboard = () => {
     void Promise.allSettled(fetches);
   }, [recentResults]);
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <Loading fullScreen message="Loading dashboard..." />;
 
   // Filter out exams that have been taken (in recentResults)
   const takenExamIds = new Set<number>();

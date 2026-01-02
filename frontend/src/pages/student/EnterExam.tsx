@@ -43,7 +43,10 @@ const EnterExam = () => {
         let toastTitle = "Access Denied";
         let toastDescription = errorMessage;
         
-        if (errorMessage.includes("class") && errorMessage.includes("enrolled")) {
+        if (errorMessage.includes("active exam session")) {
+          toastTitle = "Active Exam Session";
+          toastDescription = "You already have an exam in progress. You must complete or let it expire before starting another exam.";
+        } else if (errorMessage.includes("class") && errorMessage.includes("enrolled")) {
           toastTitle = "Class Restriction";
           toastDescription = "This exam is restricted to a specific class. You are not enrolled in the required class for this exam.";
         } else if (errorMessage.includes("organization")) {

@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Calendar, Clock, Copy, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import Loading from "@/components/ui/Loading";
 import { API_BASE_URL } from "@/lib/config";
 
 // Get current user from localStorage
@@ -210,7 +211,7 @@ const CreateExam = () => {
     });
   };
 
-  if (loading) return <div className="p-8">Loading...</div>;
+  if (loading) return <Loading fullScreen message="Loading resources..." />;
 
   return (
     <DashboardLayout>
