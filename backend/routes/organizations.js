@@ -10,18 +10,19 @@ router.get(
   requireRole("super_admin"),
   async (req, res) => {
     try {
-      const organizations = await db.sql`
-      SELECT o.*, 
-             s.plan_name as current_plan,
-             s.status as subscription_status,
-             s.end_date as subscription_end_date,
-             COUNT(u.id) as user_count
-      FROM organizations o
-      LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
-      LEFT JOIN users u ON o.id = u.organization_id
-      GROUP BY o.id, s.id, s.plan_name, s.status, s.end_date
-      ORDER BY o.created_at DESC
-    `;
+            const organizations = await db.sql`
+            SELECT o.*, 
+              s.plan_name as current_plan,
+              s.status as subscription_status,
+              s.end_date as subscription_end_date,
+              (SELECT email FROM users ua WHERE ua.organization_id = o.id AND ua.role = 'admin' LIMIT 1) as admin_email,
+              COUNT(u.id) as user_count
+            FROM organizations o
+            LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
+            LEFT JOIN users u ON o.id = u.organization_id
+            GROUP BY o.id, s.id, s.plan_name, s.status, s.end_date
+            ORDER BY o.created_at DESC
+          `;
       res.json(organizations);
     } catch (err) {
       console.log("[ORGANIZATIONS][GET] Error:", err.message);
@@ -38,17 +39,18 @@ router.get(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const organization = await db.sql`
-      SELECT o.*, 
-             s.plan_name as current_plan,
-             s.status as subscription_status,
-             s.end_date as subscription_end_date,
-             s.monthly_price,
-             s.features
-      FROM organizations o
-      LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
-      WHERE o.id = ${id}
-    `;
+            const organization = await db.sql`
+            SELECT o.*, 
+              s.plan_name as current_plan,
+              s.status as subscription_status,
+              s.end_date as subscription_end_date,
+              s.monthly_price,
+              s.features,
+              (SELECT email FROM users ua WHERE ua.organization_id = o.id AND ua.role = 'admin' LIMIT 1) as admin_email
+            FROM organizations o
+            LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
+            WHERE o.id = ${id}
+          `;
 
       if (!organization || organization.length === 0) {
         return res.status(404).json({ error: "Organization not found" });
