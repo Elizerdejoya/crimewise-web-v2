@@ -61,6 +61,8 @@ router.post(
         end_date,
         monthly_price,
         features,
+        max_users,
+        max_storage_gb,
       } = req.body;
 
       if (!organization_id || !plan_name || !start_date) {
@@ -78,20 +80,13 @@ router.post(
       WHERE organization_id = ${organization_id} AND status = 'active'
     `;
 
-      // Create new subscription
+      // Create new subscription (store max users / storage on subscription)
       const result = await db.sql`
-      INSERT INTO subscriptions (organization_id, plan_name, start_date, end_date, monthly_price, features)
-      VALUES (${organization_id}, ${plan_name}, ${start_date}, ${end_date}, ${monthly_price}, ${JSON.stringify(
+      INSERT INTO subscriptions (organization_id, plan_name, max_users, max_storage_gb, start_date, end_date, monthly_price, features)
+      VALUES (${organization_id}, ${plan_name}, ${max_users || 50}, ${max_storage_gb || 10}, ${start_date}, ${end_date}, ${monthly_price}, ${JSON.stringify(
         features
       )})
       RETURNING *
-    `;
-
-      // Update organization subscription plan
-      await db.sql`
-      UPDATE organizations 
-      SET subscription_plan = ${plan_name}, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${organization_id}
     `;
 
       res.status(201).json(result[0]);
@@ -117,11 +112,15 @@ router.put(
         monthly_price,
         features,
         status,
+        max_users,
+        max_storage_gb,
       } = req.body;
 
       await db.sql`
       UPDATE subscriptions 
       SET plan_name = ${plan_name}, 
+          max_users = ${max_users},
+          max_storage_gb = ${max_storage_gb},
           start_date = ${start_date}, 
           end_date = ${end_date}, 
           monthly_price = ${monthly_price}, 

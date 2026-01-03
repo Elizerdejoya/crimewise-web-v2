@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+const audit = require("../lib/audit");
 const {
   authenticateToken,
   requireRole,
@@ -109,8 +110,24 @@ router.post(
       }, ${studentId || null}, ${course_id || null}, ${organization_id})
         RETURNING id`;
 
+      const createdId = result[0].id;
+
+      // Log audit event
+      try {
+        await audit.logEvent({
+          actor_id: req.user && req.user.id ? req.user.id : null,
+          actor_role: req.user && req.user.role ? req.user.role : null,
+          action: 'create_student',
+          target_type: 'user',
+          target_id: createdId,
+          details: { name, email, class_id, studentId, course_id }
+        });
+      } catch (e) {
+        console.error('[AUDIT] create_student logging failed', e && e.message ? e.message : e);
+      }
+
       res.json({
-        id: result[0].id,
+        id: createdId,
         name,
         email,
         class_id,
@@ -219,6 +236,20 @@ router.delete(
 
       if (result.rowsAffected === 0) {
         return res.status(404).json({ error: "Student not found" });
+      }
+
+      // Log audit event for deletion
+      try {
+        await audit.logEvent({
+          actor_id: req.user && req.user.id ? req.user.id : null,
+          actor_role: req.user && req.user.role ? req.user.role : null,
+          action: 'delete_student',
+          target_type: 'user',
+          target_id: studentId,
+          details: null,
+        });
+      } catch (e) {
+        console.error('[AUDIT] delete_student logging failed', e && e.message ? e.message : e);
       }
 
       res.json({ success: true, id: studentId });

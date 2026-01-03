@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+const audit = require("../lib/audit");
 const { authenticateToken, requireRole } = require("../middleware");
 
 // GET all users with filtering based on current user's role and organization
@@ -126,7 +127,22 @@ router.post(
           }, ${organization_id}) 
         RETURNING *`;
 
-        res.status(201).json(result[0]);
+        const created = result[0];
+        // Log audit event
+        try {
+          await audit.logEvent({
+            actor_id: currentUser.id,
+            actor_role: currentUser.role,
+            action: 'create_user',
+            target_type: 'user',
+            target_id: created.id,
+            details: { name, email, role }
+          });
+        } catch (e) {
+          console.error('[AUDIT] create_user logging failed', e && e.message ? e.message : e);
+        }
+
+        res.status(201).json(created);
       } catch (insertErr) {
         if (insertErr.message.includes("UNIQUE constraint failed")) {
           return res.status(400).json({ error: "Email already exists" });
@@ -366,6 +382,22 @@ router.delete("/:id", async (req, res) => {
     // Check if any rows were deleted
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: "User not found" });
+    }
+
+    // Log audit event (if possible)
+    try {
+      const actor_id = req.user && req.user.id ? req.user.id : null;
+      const actor_role = req.user && req.user.role ? req.user.role : 'system';
+      await audit.logEvent({
+        actor_id,
+        actor_role,
+        action: 'delete_user',
+        target_type: 'user',
+        target_id: userId,
+        details: null,
+      });
+    } catch (e) {
+      console.error('[AUDIT] delete_user logging failed', e && e.message ? e.message : e);
     }
 
     res.json({ success: true, id: userId });

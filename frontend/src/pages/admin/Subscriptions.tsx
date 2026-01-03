@@ -66,6 +66,8 @@ type Subscription = {
   end_date: string;
   monthly_price: number;
   features: string;
+  max_users?: number;
+  max_storage_gb?: number;
   created_at: string;
 };
 
@@ -90,6 +92,8 @@ const AdminSubscriptionsPage = () => {
       status: "active",
       start_date: new Date().toISOString().split("T")[0],
       monthly_price: 49.99,
+      max_users: 50,
+      max_storage_gb: 10,
     }
   );
   const [editSubscription, setEditSubscription] = useState<
@@ -281,12 +285,13 @@ const AdminSubscriptionsPage = () => {
         body: JSON.stringify({
           ...newSubscription,
           features,
+          max_users: newSubscription.max_users,
+          max_storage_gb: newSubscription.max_storage_gb,
         }),
       });
 
       if (res.ok) {
         const createdSub = await res.json();
-        setSubscriptions([...subscriptions, createdSub]);
         toast({
           title: "Subscription Added",
           description: "Subscription created successfully.",
@@ -299,7 +304,11 @@ const AdminSubscriptionsPage = () => {
           status: "active",
           start_date: new Date().toISOString().split("T")[0],
           monthly_price: 49.99,
+          max_users: 50,
+          max_storage_gb: 10,
         });
+        // Reload subscriptions to fetch full details from backend
+        fetchSubscriptions();
       } else {
         const error = await res.json();
         toast({
@@ -348,6 +357,8 @@ const AdminSubscriptionsPage = () => {
           body: JSON.stringify({
             ...editSubscription,
             features,
+            max_users: editSubscription.max_users,
+            max_storage_gb: editSubscription.max_storage_gb,
           }),
         }
       );
@@ -413,6 +424,8 @@ const AdminSubscriptionsPage = () => {
         ...newSubscription,
         plan_name: planName,
         monthly_price: selectedPlan.price,
+        max_users: selectedPlan.max_users,
+        max_storage_gb: selectedPlan.max_storage_gb,
       });
     }
   };
@@ -424,6 +437,8 @@ const AdminSubscriptionsPage = () => {
         ...editSubscription,
         plan_name: planName,
         monthly_price: selectedPlan.price,
+        max_users: selectedPlan.max_users,
+        max_storage_gb: selectedPlan.max_storage_gb,
       });
     }
   };
@@ -500,7 +515,6 @@ const AdminSubscriptionsPage = () => {
                       onChange={toggleSelectAll}
                     />
                   </TableHead>
-                  <TableHead>ID</TableHead>
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -564,12 +578,13 @@ const AdminSubscriptionsPage = () => {
                   </TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
+                  <TableHead>Users</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSubscriptions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center">
+                    <TableCell colSpan={10} className="text-center">
                       No subscriptions found.
                     </TableCell>
                   </TableRow>
@@ -586,7 +601,6 @@ const AdminSubscriptionsPage = () => {
                           onChange={() => toggleSelectRow(sub.id)}
                         />
                       </TableCell>
-                      <TableCell>{sub.id}</TableCell>
                       <TableCell className="font-medium">
                         {sub.organization_name}
                       </TableCell>
@@ -616,6 +630,12 @@ const AdminSubscriptionsPage = () => {
                           {sub.end_date
                             ? new Date(sub.end_date).toLocaleDateString()
                             : "Ongoing"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4" />
+                          { (organizations.find(o => o.id === sub.organization_id)?.user_count || 0) } / {sub.max_users || "-"}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -719,6 +739,22 @@ const AdminSubscriptionsPage = () => {
                       setNewSubscription({
                         ...newSubscription,
                         end_date: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="max_users">Max Users</Label>
+                  <Input
+                    id="max_users"
+                    type="number"
+                    value={newSubscription.max_users}
+                    onChange={(e) =>
+                      setNewSubscription({
+                        ...newSubscription,
+                        max_users: parseInt(e.target.value),
                       })
                     }
                   />
@@ -830,6 +866,22 @@ const AdminSubscriptionsPage = () => {
                       setEditSubscription({
                         ...editSubscription,
                         end_date: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-max-users">Max Users</Label>
+                  <Input
+                    id="edit-max-users"
+                    type="number"
+                    value={editSubscription.max_users || 0}
+                    onChange={(e) =>
+                      setEditSubscription({
+                        ...editSubscription,
+                        max_users: parseInt(e.target.value),
                       })
                     }
                   />

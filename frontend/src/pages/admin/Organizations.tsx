@@ -66,18 +66,15 @@ type Organization = {
   id: number;
   name: string;
   domain: string;
-  contact_email: string;
-  contact_phone: string;
-  address: string;
+  admin_name: string;
   status: "active" | "inactive";
-  subscription_plan: string;
-  max_users: number;
-  max_storage_gb: number;
   created_at: string;
   updated_at: string;
   current_plan?: string;
   subscription_status?: string;
   subscription_end_date?: string;
+  max_users?: number;
+  max_storage_gb?: number;
   user_count?: number;
   admin_email?: string;
   admin_password?: string;
@@ -90,22 +87,20 @@ const AdminOrganizationsPage = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [sortBy, setSortBy] = useState<
-    "name" | "domain" | "status" | "subscription_plan" | null
+    "name" | "domain" | "status" | "current_plan" | null
   >(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [newOrganization, setNewOrganization] = useState<Partial<Organization>>(
     {
       name: "",
       domain: "",
-      contact_email: "",
-      contact_phone: "",
-      address: "",
+      admin_name: "",
+      admin_email: "",
+      admin_password: "",
       status: "active",
-      subscription_plan: "basic",
-      max_users: 50,
-      max_storage_gb: 10,
     }
   );
   const [editOrganization, setEditOrganization] = useState<
@@ -149,10 +144,10 @@ const AdminOrganizationsPage = () => {
     (org) =>
       (org.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
       (org.domain?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (org.contact_email?.toLowerCase() || "").includes(
+      (org.admin_email?.toLowerCase() || "").includes(
         searchTerm.toLowerCase()
       ) ||
-      (org.subscription_plan?.toLowerCase() || "").includes(
+      (org.current_plan?.toLowerCase() || "").includes(
         searchTerm.toLowerCase()
       )
   );
@@ -167,7 +162,7 @@ const AdminOrganizationsPage = () => {
   }
 
   const handleSort = (
-    column: "name" | "domain" | "status" | "subscription_plan"
+    column: "name" | "domain" | "status" | "current_plan"
   ) => {
     if (sortBy === column) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -217,7 +212,24 @@ const AdminOrganizationsPage = () => {
         })
       );
 
-      await Promise.all(deletePromises);
+      const responses = await Promise.all(deletePromises);
+      
+      // Check if all deletions were successful
+      const allSuccessful = responses.every(res => res.ok);
+      
+      if (!allSuccessful) {
+        // At least one failed, show error
+        const failedRes = responses.find(res => !res.ok);
+        const errorData = await failedRes?.json();
+        toast({
+          title: "Error",
+          description: errorData?.error || "Failed to delete one or more organizations.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        setIsDeleteConfirmOpen(false);
+        return;
+      }
 
       setOrganizations(
         organizations.filter((org) => !selectedIds.includes(org.id))
@@ -259,15 +271,6 @@ const AdminOrganizationsPage = () => {
       });
       return;
     }
-    // Validate admin email/password
-    if (!(newOrganization as any).admin_email || !(newOrganization as any).admin_password) {
-      toast({
-        title: "Validation Error",
-        description: "Admin email and password are required.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     setLoading(true);
     try {
@@ -282,7 +285,6 @@ const AdminOrganizationsPage = () => {
 
       if (res.ok) {
         const createdOrg = await res.json();
-        setOrganizations([...organizations, createdOrg]);
         toast({
           title: "Organization Added",
           description: "Organization created successfully.",
@@ -292,16 +294,14 @@ const AdminOrganizationsPage = () => {
         setNewOrganization({
           name: "",
           domain: "",
-          contact_email: "",
+          admin_name: "",
           admin_email: "",
           admin_password: "",
-          contact_phone: "",
-          address: "",
           status: "active",
-          subscription_plan: "basic",
-          max_users: 50,
-          max_storage_gb: 10,
+          
         });
+        // Reload organizations to fetch full details including admin_email
+        fetchOrganizations();
       } else {
         const error = await res.json();
         toast({
@@ -464,7 +464,6 @@ const AdminOrganizationsPage = () => {
                       onChange={toggleSelectAll}
                     />
                   </TableHead>
-                  <TableHead>ID</TableHead>
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -499,11 +498,11 @@ const AdminOrganizationsPage = () => {
                   <TableHead>
                     <Button
                       variant="ghost"
-                      onClick={() => handleSort("subscription_plan")}
+                      onClick={() => handleSort("current_plan")}
                       className="p-0 h-auto"
                     >
                       Plan{" "}
-                      {sortBy === "subscription_plan" &&
+                      {sortBy === "current_plan" &&
                         (sortOrder === "asc" ? (
                           <ArrowUp className="ml-1 h-3 w-3" />
                         ) : (
@@ -511,7 +510,7 @@ const AdminOrganizationsPage = () => {
                         ))}
                     </Button>
                   </TableHead>
-                  <TableHead>Users</TableHead>
+                  
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -533,7 +532,7 @@ const AdminOrganizationsPage = () => {
               <TableBody>
                 {filteredOrganizations.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center">
+                    <TableCell colSpan={8} className="text-center">
                       No organizations found.
                     </TableCell>
                   </TableRow>
@@ -550,36 +549,22 @@ const AdminOrganizationsPage = () => {
                           onChange={() => toggleSelectRow(org.id)}
                         />
                       </TableCell>
-                      <TableCell>{org.id}</TableCell>
                       <TableCell className="font-medium">{org.name}</TableCell>
                       <TableCell>{org.domain}</TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          {(org as any).admin_email ? (
-                            <a
-                              href={`mailto:${(org as any).admin_email}`}
-                              className="text-sm hover:underline"
-                            >
-                              {(org as any).admin_email}
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                          {org.admin_name ? org.admin_name : <span className="text-muted-foreground">-</span>}
+                          <div className="text-xs text-muted-foreground">
+                            {org.admin_email ? org.admin_email : "-"}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          className={getPlanBadgeColor(org.subscription_plan)}
-                        >
-                          {org.subscription_plan}
+                        <Badge className={getPlanBadgeColor(org.current_plan || '')}>
+                          {org.current_plan || "-"}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-4 w-4" />
-                          {org.user_count || 0} / {org.max_users}
-                        </div>
-                      </TableCell>
+                      
                       <TableCell>
                         <div
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -642,44 +627,15 @@ const AdminOrganizationsPage = () => {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Contact Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newOrganization.contact_email}
-                    onChange={(e) =>
-                      setNewOrganization({
-                        ...newOrganization,
-                        contact_email: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Contact Phone</Label>
-                  <Input
-                    id="phone"
-                    value={newOrganization.contact_phone}
-                    onChange={(e) =>
-                      setNewOrganization({
-                        ...newOrganization,
-                        contact_phone: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
               <div className="space-y-2">
-                <Label htmlFor="address">Address</Label>
+                <Label htmlFor="admin_name">Admin Name</Label>
                 <Input
-                  id="address"
-                  value={newOrganization.address}
+                  id="admin_name"
+                  value={newOrganization.admin_name}
                   onChange={(e) =>
                     setNewOrganization({
                       ...newOrganization,
-                      address: e.target.value,
+                      admin_name: e.target.value,
                     })
                   }
                 />
@@ -742,88 +698,10 @@ const AdminOrganizationsPage = () => {
                   <CollapsibleTrigger className="text-sm text-primary hover:underline">Advanced options</CollapsibleTrigger>
                   <CollapsibleContent>
                     <div className="mt-3 space-y-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="address2">Address</Label>
-                        <Input
-                          id="address2"
-                          value={newOrganization.address}
-                          onChange={(e) =>
-                            setNewOrganization({
-                              ...newOrganization,
-                              address: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="phone2">Contact Phone</Label>
-                          <Input
-                            id="phone2"
-                            value={newOrganization.contact_phone}
-                            onChange={(e) =>
-                              setNewOrganization({
-                                ...newOrganization,
-                                contact_phone: e.target.value,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="plan">Subscription Plan</Label>
-                  <Select
-                    value={newOrganization.subscription_plan}
-                    onValueChange={(value) =>
-                      setNewOrganization({
-                        ...newOrganization,
-                        subscription_plan: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select plan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="basic">Basic</SelectItem>
-                      <SelectItem value="premium">Premium</SelectItem>
-                      <SelectItem value="enterprise">Enterprise</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max_users">Max Users</Label>
-                  <Input
-                    id="max_users"
-                    type="number"
-                    value={newOrganization.max_users}
-                    onChange={(e) =>
-                      setNewOrganization({
-                        ...newOrganization,
-                        max_users: parseInt(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max_storage">Max Storage (GB)</Label>
-                  <Input
-                    id="max_storage"
-                    type="number"
-                    value={newOrganization.max_storage_gb}
-                    onChange={(e) =>
-                      setNewOrganization({
-                        ...newOrganization,
-                        max_storage_gb: parseInt(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-              </div>
+              
               <div className="flex items-center space-x-2">
                 <Label htmlFor="status">Active</Label>
                 <Switch
@@ -890,98 +768,18 @@ const AdminOrganizationsPage = () => {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-email">Contact Email</Label>
-                  <Input
-                    id="edit-email"
-                    type="email"
-                    value={editOrganization.contact_email || ""}
-                    onChange={(e) =>
-                      setEditOrganization({
-                        ...editOrganization,
-                        contact_email: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-phone">Contact Phone</Label>
-                  <Input
-                    id="edit-phone"
-                    value={editOrganization.contact_phone || ""}
-                    onChange={(e) =>
-                      setEditOrganization({
-                        ...editOrganization,
-                        contact_phone: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-address">Address</Label>
+                <Label htmlFor="edit-admin-name">Admin Name</Label>
                 <Input
-                  id="edit-address"
-                  value={editOrganization.address || ""}
+                  id="edit-admin-name"
+                  value={editOrganization.admin_name || ""}
                   onChange={(e) =>
                     setEditOrganization({
                       ...editOrganization,
-                      address: e.target.value,
+                      admin_name: e.target.value,
                     })
                   }
                 />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-plan">Subscription Plan</Label>
-                  <Select
-                    value={editOrganization.subscription_plan || ""}
-                    onValueChange={(value) =>
-                      setEditOrganization({
-                        ...editOrganization,
-                        subscription_plan: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select plan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="basic">Basic</SelectItem>
-                      <SelectItem value="premium">Premium</SelectItem>
-                      <SelectItem value="enterprise">Enterprise</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-max-users">Max Users</Label>
-                  <Input
-                    id="edit-max-users"
-                    type="number"
-                    value={editOrganization.max_users || 50}
-                    onChange={(e) =>
-                      setEditOrganization({
-                        ...editOrganization,
-                        max_users: parseInt(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="edit-max-storage">Max Storage (GB)</Label>
-                  <Input
-                    id="edit-max-storage"
-                    type="number"
-                    value={editOrganization.max_storage_gb || 10}
-                    onChange={(e) =>
-                      setEditOrganization({
-                        ...editOrganization,
-                        max_storage_gb: parseInt(e.target.value),
-                      })
-                    }
-                  />
-                </div>
               </div>
               <div className="flex items-center space-x-2">
                 <Label htmlFor="edit-status">Active</Label>

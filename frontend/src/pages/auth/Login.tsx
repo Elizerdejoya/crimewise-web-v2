@@ -32,7 +32,7 @@ const Login = () => {
       }
     }
     // Remember-me feature removed: nothing to load here
-  }, [navigate]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

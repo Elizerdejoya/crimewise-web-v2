@@ -5,10 +5,17 @@ async function seed() {
     console.log("Seeding database with sample data...");
 
     // --- ORGANIZATIONS --- (must be first due to foreign key constraints)
-    await db.sql`INSERT OR IGNORE INTO organizations (id, name, domain, contact_email, subscription_plan, max_users, max_storage_gb) VALUES
-      (1, 'CrimeWise Main', 'crimewise.com', 'admin@crimewise.com', 'premium', 200, 50),
-      (2, 'Police Academy A', 'policeacademy-a.edu', 'admin@policeacademy-a.edu', 'basic', 50, 10),
-      (3, 'Criminal Justice Institute', 'cji.org', 'admin@cji.org', 'enterprise', 500, 100)
+    await db.sql`INSERT OR IGNORE INTO organizations (id, name, domain, admin_name) VALUES
+      (1, 'CrimeWise Main', 'crimewise.com', 'Admin User'),
+      (2, 'Police Academy A', 'policeacademy-a.edu', 'Police Admin'),
+      (3, 'Criminal Justice Institute', 'cji.org', 'CJI Admin')
+    `;
+
+    // --- SUBSCRIPTIONS ---
+    await db.sql`INSERT OR IGNORE INTO subscriptions (id, organization_id, plan_name, max_users, max_storage_gb, start_date, monthly_price, features, status) VALUES
+      (1, 1, 'premium', 200, 50, datetime('now'), 99.99, '["advanced_analytics", "priority_support", "custom_branding"]', 'active'),
+      (2, 2, 'basic', 50, 10, datetime('now'), 49.99, '["basic_features"]', 'active'),
+      (3, 3, 'enterprise', 500, 100, datetime('now'), 199.99, '["advanced_analytics", "priority_support", "custom_branding"]', 'active')
     `;
 
     // --- BATCHES ---

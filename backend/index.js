@@ -84,6 +84,7 @@ const chatbotRoutes = require("./routes/chatbot");
 const keywordPoolsRoutes = require("./routes/keyword-pools");
 const contactRoutes = require("./routes/contact");
 const aiGraderRoutes = require("./routes/ai-grader");
+const eventsRoutes = require("./routes/events");
 const apiKeyManager = require("./apiKeyManager");
 
 // Mount modular routes
@@ -102,6 +103,7 @@ app.use("/api/ai-grader", aiGraderRoutes);
 app.use("/api", keywordPoolsRoutes);
 app.use("/api", questionsRouter);
 app.use("/api", contactRoutes);
+app.use("/api/events", eventsRoutes);
 app.use("/", homeRoutes);
 
 // Serve static files from frontend dist (but don't interfere with API routes)

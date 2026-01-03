@@ -7,17 +7,28 @@ async function seedPostgres() {
     // Organizations
     console.log('📦 Creating organizations...');
     await db.sql`
-      INSERT INTO organizations (name, domain, contact_email, subscription_plan, max_users, max_storage_gb)
+      INSERT INTO organizations (name, domain, admin_name)
       VALUES 
-        ('CrimeWise Main', 'crimewise.com', 'admin@crimewise.com', 'premium', 200, 50),
-        ('Police Academy A', 'policeacademy-a.edu', 'admin@policeacademy-a.edu', 'basic', 50, 10),
-        ('Criminal Justice Institute', 'cji.org', 'admin@cji.org', 'enterprise', 500, 100)
+        ('CrimeWise Main', 'crimewise.com', 'Admin User'),
+        ('Police Academy A', 'policeacademy-a.edu', 'Police Admin'),
+        ('Criminal Justice Institute', 'cji.org', 'CJI Admin')
       ON CONFLICT DO NOTHING
     `;
 
     // Get organization ID
     const orgs = await db.sql`SELECT id FROM organizations ORDER BY id LIMIT 1`;
     const orgId = orgs[0]?.id || 1;
+
+    // Create subscriptions for organizations
+    console.log('📅 Creating subscriptions...');
+    await db.sql`
+      INSERT INTO subscriptions (organization_id, plan_name, max_users, max_storage_gb, start_date, monthly_price, features, status)
+      VALUES 
+        (${orgId}, 'premium', 200, 50, CURRENT_TIMESTAMP, 99.99, '["advanced_analytics", "priority_support", "custom_branding"]', 'active'),
+        (${orgId + 1}, 'basic', 50, 10, CURRENT_TIMESTAMP, 49.99, '["basic_features"]', 'active'),
+        (${orgId + 2}, 'enterprise', 500, 100, CURRENT_TIMESTAMP, 199.99, '["advanced_analytics", "priority_support", "custom_branding", "dedicated_support"]', 'active')
+      ON CONFLICT DO NOTHING
+    `;
 
     // Users (must be before courses because courses references instructor_id)
     console.log('👥 Creating users...');

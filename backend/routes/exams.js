@@ -6,6 +6,7 @@ const {
   requireRole,
   addOrganizationFilter,
 } = require("../middleware");
+const audit = require("../lib/audit");
 
 // Generate a random token for the exam
 function generateToken(length = 8) {
@@ -248,7 +249,23 @@ router.post(
       RETURNING id
     `;
 
-      res.json({ id: result[0].id, token });
+      const createdId = result[0].id;
+
+      // Log audit event for exam creation
+      try {
+        await audit.logEvent({
+          actor_id: req.user && req.user.id ? req.user.id : null,
+          actor_role: req.user && req.user.role ? req.user.role : null,
+          action: 'create_exam',
+          target_type: 'exam',
+          target_id: createdId,
+          details: { name, course_id, class_id, instructor_id }
+        });
+      } catch (e) {
+        console.error('[AUDIT] create_exam logging failed', e && e.message ? e.message : e);
+      }
+
+      res.json({ id: createdId, token });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }

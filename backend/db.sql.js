@@ -19,13 +19,8 @@ async function initializeSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       domain TEXT UNIQUE,
-      contact_email TEXT,
-      contact_phone TEXT,
-      address TEXT,
+      admin_name TEXT,
       status TEXT DEFAULT 'active',
-      subscription_plan TEXT DEFAULT 'basic',
-      max_users INTEGER DEFAULT 50,
-      max_storage_gb INTEGER DEFAULT 10,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`;
@@ -34,11 +29,13 @@ async function initializeSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       organization_id INTEGER NOT NULL,
       plan_name TEXT NOT NULL,
+      max_users INTEGER DEFAULT 50,
+      max_storage_gb INTEGER DEFAULT 10,
       status TEXT DEFAULT 'active',
       start_date TEXT NOT NULL,
       end_date TEXT,
       monthly_price DECIMAL(10,2),
-      features TEXT, -- JSON string of features
+      features TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY(organization_id) REFERENCES organizations(id)
     )`;

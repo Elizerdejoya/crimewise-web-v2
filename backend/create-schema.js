@@ -31,13 +31,8 @@ async function checkAndCreateTables() {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         domain TEXT UNIQUE,
-        contact_email TEXT,
-        contact_phone TEXT,
-        address TEXT,
+        admin_name TEXT,
         status TEXT DEFAULT 'active',
-        subscription_plan TEXT DEFAULT 'basic',
-        max_users INTEGER DEFAULT 50,
-        max_storage_gb INTEGER DEFAULT 10,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -46,6 +41,8 @@ async function checkAndCreateTables() {
         id SERIAL PRIMARY KEY,
         organization_id INTEGER NOT NULL REFERENCES organizations(id),
         plan_name TEXT NOT NULL,
+        max_users INTEGER DEFAULT 50,
+        max_storage_gb INTEGER DEFAULT 10,
         status TEXT DEFAULT 'active',
         start_date TIMESTAMP NOT NULL,
         end_date TIMESTAMP,

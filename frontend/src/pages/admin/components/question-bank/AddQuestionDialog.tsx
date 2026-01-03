@@ -265,17 +265,6 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       return;
     }
 
-    // Check if explanation is forensic science related
-    if (explanation.trim() && !isForensicScienceRelated(explanation)) {
-      toast({
-        title: "Warning",
-        description:
-          "The explanation should be related to forensic science analysis. Please review your explanation.",
-        variant: "destructive",
-      });
-      // Don't return here, just warn the user
-    }
-
     // Handle multiple image uploads sequentially to reduce memory pressure
     // NOTE: we upload standard specimen images first, then questioned specimen images
     const questionUrls: string[] = [];

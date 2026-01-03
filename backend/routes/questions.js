@@ -5,6 +5,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { put } = require("@vercel/blob");
+const audit = require("../lib/audit");
 const {
   authenticateToken,
   requireRole,
@@ -275,6 +276,19 @@ router.post(
       LEFT JOIN users u ON q.created_by = u.id
       WHERE q.id = ${newId}
     `;
+      // Log audit event
+      try {
+        await audit.logEvent({
+          actor_id: req.user && req.user.id ? req.user.id : null,
+          actor_role: req.user && req.user.role ? req.user.role : null,
+          action: 'create_question',
+          target_type: 'question',
+          target_id: newId,
+          details: { title, course_id, difficulty, type }
+        });
+      } catch (e) {
+        console.error('[AUDIT] create_question logging failed', e && e.message ? e.message : e);
+      }
 
       res.json(newQuestion[0]);
     } catch (err) {

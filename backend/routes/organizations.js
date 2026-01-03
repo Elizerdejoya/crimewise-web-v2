@@ -15,6 +15,8 @@ router.get(
               s.plan_name as current_plan,
               s.status as subscription_status,
               s.end_date as subscription_end_date,
+              s.max_users as max_users,
+              s.max_storage_gb as max_storage_gb,
               (SELECT email FROM users ua WHERE ua.organization_id = o.id AND ua.role = 'admin' LIMIT 1) as admin_email,
               COUNT(u.id) as user_count
             FROM organizations o
@@ -46,6 +48,8 @@ router.get(
               s.end_date as subscription_end_date,
               s.monthly_price,
               s.features,
+              s.max_users as max_users,
+              s.max_storage_gb as max_storage_gb,
               (SELECT email FROM users ua WHERE ua.organization_id = o.id AND ua.role = 'admin' LIMIT 1) as admin_email
             FROM organizations o
             LEFT JOIN subscriptions s ON o.id = s.organization_id AND s.status = 'active'
@@ -74,9 +78,7 @@ router.post(
       const {
         name,
         domain,
-        contact_email,
-        contact_phone,
-        address,
+        admin_name,
         subscription_plan,
         max_users,
         max_storage_gb,
@@ -88,31 +90,12 @@ router.post(
 
       // Create organization
       const result = await db.sql`
-      INSERT INTO organizations (name, domain, contact_email, contact_phone, address, subscription_plan, max_users, max_storage_gb)
-      VALUES (${name}, ${domain}, ${contact_email}, ${contact_phone}, ${address}, ${
-        subscription_plan || "basic"
-      }, ${max_users || 50}, ${max_storage_gb || 10})
+      INSERT INTO organizations (name, domain, admin_name)
+      VALUES (${name}, ${domain}, ${admin_name})
       RETURNING *
     `;
 
       const organization = result[0];
-
-      // Create default subscription
-      await db.sql`
-      INSERT INTO subscriptions (organization_id, plan_name, start_date, monthly_price, features)
-      VALUES (${organization.id}, ${
-        subscription_plan || "basic"
-      }, CURRENT_TIMESTAMP, ${
-        subscription_plan === "premium" ? 99.99 : 49.99
-      }, ${JSON.stringify({
-        max_users: max_users || 50,
-        max_storage_gb: max_storage_gb || 10,
-        features:
-          subscription_plan === "premium"
-            ? ["advanced_analytics", "priority_support", "custom_branding"]
-            : ["basic_features"],
-      })})
-    `;
 
       res.status(201).json(organization);
         // If admin credentials are provided, create the admin user for this organization
@@ -121,7 +104,7 @@ router.post(
           try {
             await db.sql`
               INSERT INTO users (name, email, password, role, status, organization_id)
-              VALUES (${name + " Admin"}, ${admin_email}, ${admin_password}, 'admin', 'active', ${organization.id})
+              VALUES (${admin_name || name + " Admin"}, ${admin_email}, ${admin_password}, 'admin', 'active', ${organization.id})
             `;
           } catch (userErr) {
             console.error('[ORGANIZATIONS][POST] Failed to create admin user:', userErr && userErr.message ? userErr.message : userErr);
@@ -149,13 +132,8 @@ router.put(
       const {
         name,
         domain,
-        contact_email,
-        contact_phone,
-        address,
+        admin_name,
         status,
-        subscription_plan,
-        max_users,
-        max_storage_gb,
       } = req.body;
 
       if (!name) {
@@ -166,13 +144,8 @@ router.put(
       UPDATE organizations 
       SET name = ${name}, 
           domain = ${domain}, 
-          contact_email = ${contact_email}, 
-          contact_phone = ${contact_phone}, 
-          address = ${address}, 
+          admin_name = ${admin_name}, 
           status = ${status},
-          subscription_plan = ${subscription_plan},
-          max_users = ${max_users},
-          max_storage_gb = ${max_storage_gb},
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
     `;
@@ -204,17 +177,10 @@ router.delete(
     try {
       const { id } = req.params;
 
-      // Check if organization has users
-      const userCount =
-        await db.sql`SELECT COUNT(*) as count FROM users WHERE organization_id = ${id}`;
+      // Delete users in this organization first
+      await db.sql`DELETE FROM users WHERE organization_id = ${id}`;
 
-      if (userCount[0].count > 0) {
-        return res
-          .status(400)
-          .json({ error: "Cannot delete organization with existing users" });
-      }
-
-      // Delete subscriptions first
+      // Delete subscriptions
       await db.sql`DELETE FROM subscriptions WHERE organization_id = ${id}`;
 
       // Delete organization

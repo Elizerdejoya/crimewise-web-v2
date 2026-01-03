@@ -37,12 +37,19 @@ async function cleanAndSeed() {
 
     // Create organization
     const orgResult = await client.query(`
-      INSERT INTO organizations (name, domain, contact_email, subscription_plan, max_users, max_storage_gb, status)
-      VALUES ('CrimeWise Main', 'crimewise.com', 'admin@crimewise.com', 'premium', 200, 50, 'active')
+      INSERT INTO organizations (name, domain, admin_name, status)
+      VALUES ('CrimeWise Main', 'crimewise.com', 'Admin User', 'active')
       RETURNING id
     `);
     const orgId = orgResult.rows[0].id;
     console.log(`✓ Organization created (id=${orgId})`);
+
+    // Create subscription for organization
+    await client.query(`
+      INSERT INTO subscriptions (organization_id, plan_name, max_users, max_storage_gb, start_date, monthly_price, features, status)
+      VALUES ($1, 'premium', 200, 50, CURRENT_TIMESTAMP, 99.99, '["advanced_analytics", "priority_support", "custom_branding"]', 'active')
+    `, [orgId]);
+    console.log(`✓ Subscription created for organization`);
 
     // Create super admin (no organization)
     const superAdminResult = await client.query(`
