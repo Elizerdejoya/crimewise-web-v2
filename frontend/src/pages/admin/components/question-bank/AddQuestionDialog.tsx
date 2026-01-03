@@ -67,6 +67,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   const [selectedKeywordPool, setSelectedKeywordPool] = useState<any>(null);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [isKeywordPoolManagerOpen, setIsKeywordPoolManagerOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -235,93 +236,98 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   };
 
   const handleAddQuestion = async () => {
-    if (!form.title || !form.course || !form.difficulty) {
-      toast({
-        title: "Validation Error",
-        description: "Title, course, and difficulty are required.",
-        variant: "destructive",
-      });
-      return;
-    }
+    setIsSaving(true);
+    try {
+      if (!form.title || !form.course || !form.difficulty) {
+        toast({
+          title: "Validation Error",
+          description: "Title, course, and difficulty are required.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    // Validate forensic conclusion and explanation
-    if (explanation.trim() && !forensicConclusion) {
-      toast({
-        title: "Validation Error",
-        description:
-          "Please select whether the specimen is written by the same person when providing an explanation.",
-        variant: "destructive",
-      });
-      return;
-    }
+      // Validate forensic conclusion and explanation
+      if (explanation.trim() && !forensicConclusion) {
+        toast({
+          title: "Validation Error",
+          description:
+            "Please select whether the specimen is written by the same person when providing an explanation.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    if (forensicConclusion && !explanation.trim()) {
-      toast({
-        title: "Validation Error",
-        description:
-          "Please provide an explanation when selecting a forensic conclusion.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (forensicConclusion && !explanation.trim()) {
+        toast({
+          title: "Validation Error",
+          description:
+            "Please provide an explanation when selecting a forensic conclusion.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    // Handle multiple image uploads sequentially to reduce memory pressure
-    // NOTE: we upload standard specimen images first, then questioned specimen images
-    const questionUrls: string[] = [];
-    const standardUrls: string[] = [];
+      // Handle multiple image uploads sequentially to reduce memory pressure
+      // NOTE: we upload standard specimen images first, then questioned specimen images
+      const questionUrls: string[] = [];
+      const standardUrls: string[] = [];
 
-    if (standardImageFiles.length > 0) {
-      console.log(`[Questions] Starting upload of ${standardImageFiles.length} standard specimen image(s)`);
-      for (let i = 0; i < standardImageFiles.length; i++) {
-        const file = standardImageFiles[i];
-        try {
-          console.log(`[Questions] Uploading standard image ${i + 1}/${standardImageFiles.length}: ${file.name}`);
-          const url = await new Promise<string>((resolve, reject) => {
-            uploadImage(file, resolve, reject);
-          });
-          standardUrls.push(url);
-          console.log(`[Questions] Successfully uploaded standard image ${i + 1}/${standardImageFiles.length}`);
-        } catch (err: any) {
-          const errorMessage = err?.message || "Unknown error occurred";
-          toast({
-            title: "Upload Failed",
-            description: `Failed to upload "${file.name}": ${errorMessage}`,
-            variant: "destructive",
-          });
-          console.error(`[Questions][Upload] Error uploading ${file.name}:`, err);
-          return; // abort adding the question
+      if (standardImageFiles.length > 0) {
+        console.log(`[Questions] Starting upload of ${standardImageFiles.length} standard specimen image(s)`);
+        for (let i = 0; i < standardImageFiles.length; i++) {
+          const file = standardImageFiles[i];
+          try {
+            console.log(`[Questions] Uploading standard image ${i + 1}/${standardImageFiles.length}: ${file.name}`);
+            const url = await new Promise<string>((resolve, reject) => {
+              uploadImage(file, resolve, reject);
+            });
+            standardUrls.push(url);
+            console.log(`[Questions] Successfully uploaded standard image ${i + 1}/${standardImageFiles.length}`);
+          } catch (err: any) {
+            const errorMessage = err?.message || "Unknown error occurred";
+            toast({
+              title: "Upload Failed",
+              description: `Failed to upload "${file.name}": ${errorMessage}`,
+              variant: "destructive",
+            });
+            console.error(`[Questions][Upload] Error uploading ${file.name}:`, err);
+            return; // abort adding the question
+          }
         }
       }
-    }
 
-    if (questionImageFiles.length > 0) {
-      console.log(`[Questions] Starting upload of ${questionImageFiles.length} question specimen image(s)`);
-      for (let i = 0; i < questionImageFiles.length; i++) {
-        const file = questionImageFiles[i];
-        try {
-          console.log(`[Questions] Uploading question image ${i + 1}/${questionImageFiles.length}: ${file.name}`);
-          const url = await new Promise<string>((resolve, reject) => {
-            uploadImage(file, resolve, reject);
-          });
-          questionUrls.push(url);
-          console.log(`[Questions] Successfully uploaded question image ${i + 1}/${questionImageFiles.length}`);
-        } catch (err: any) {
-          const errorMessage = err?.message || "Unknown error occurred";
-          toast({
-            title: "Upload Failed",
-            description: `Failed to upload "${file.name}": ${errorMessage}`,
-            variant: "destructive",
-          });
-          console.error(`[Questions][Upload] Error uploading ${file.name}:`, err);
-          return; // abort adding the question
+      if (questionImageFiles.length > 0) {
+        console.log(`[Questions] Starting upload of ${questionImageFiles.length} question specimen image(s)`);
+        for (let i = 0; i < questionImageFiles.length; i++) {
+          const file = questionImageFiles[i];
+          try {
+            console.log(`[Questions] Uploading question image ${i + 1}/${questionImageFiles.length}: ${file.name}`);
+            const url = await new Promise<string>((resolve, reject) => {
+              uploadImage(file, resolve, reject);
+            });
+            questionUrls.push(url);
+            console.log(`[Questions] Successfully uploaded question image ${i + 1}/${questionImageFiles.length}`);
+          } catch (err: any) {
+            const errorMessage = err?.message || "Unknown error occurred";
+            toast({
+              title: "Upload Failed",
+              description: `Failed to upload "${file.name}": ${errorMessage}`,
+              variant: "destructive",
+            });
+            console.error(`[Questions][Upload] Error uploading ${file.name}:`, err);
+            return; // abort adding the question
+          }
         }
       }
-    }
 
-    // Store standard images first, followed by question images (new convention)
-    const allUrls = [...standardUrls, ...questionUrls];
-    const combined = allUrls.length > 0 ? allUrls.join("|") : "";
-    finalizeQuestionSubmission(combined);
+      // Store standard images first, followed by question images (new convention)
+      const allUrls = [...standardUrls, ...questionUrls];
+      const combined = allUrls.length > 0 ? allUrls.join("|") : "";
+      finalizeQuestionSubmission(combined);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const finalizeQuestionSubmission = (imageUrl: string) => {
@@ -851,11 +857,12 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
               resetForm();
               onOpenChange(false);
             }}
+            disabled={isSaving}
           >
             Cancel
           </Button>
-          <Button type="button" onClick={handleAddQuestion}>
-            Save Question
+          <Button type="button" onClick={handleAddQuestion} disabled={isSaving}>
+            {isSaving ? "Saving..." : "Save Question"}
           </Button>
         </DialogFooter>
       </DialogContent>
