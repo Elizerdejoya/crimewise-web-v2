@@ -11,6 +11,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Image, ArrowUp, ArrowDown, Edit, Eye, Trash, Tags } from "lucide-react";
 
+// Format date to readable format
+const formatDate = (dateString: string): string => {
+  if (!dateString) return "-";
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch {
+    return dateString;
+  }
+};
+
 interface QuestionTableProps {
   questions: any[];
   selectedIds: number[];
@@ -191,7 +208,7 @@ const QuestionTable: React.FC<QuestionTableProps> = ({
                   </span>
                 </TableCell>
                 <TableCell>{question.created_by || "System"}</TableCell>
-                <TableCell>{question.created}</TableCell>
+                <TableCell>{formatDate(question.created)}</TableCell>
                 <TableCell>
                   {question.keyword_pool_name ? (
                     <Badge variant="secondary" className="flex items-center gap-1 w-fit">
