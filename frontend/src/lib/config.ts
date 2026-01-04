@@ -5,7 +5,8 @@
 // In production, it might be set during the build process or via environment variables on the server.
 // Read API base URL from Vite env (set VITE_API_BASE_URL in Vercel or .env)
 // Fallback to localhost for local development
-export const API_BASE_URL ="http://localhost:5000";
+//export const API_BASE_URL ="http://localhost:5000";
+export const API_BASE_URL ="https://crimewise-web-v2-ri4n.vercel.app";
 // Examples for production (keep in Vercel env instead of hardcoding):
 // https://crimewise-backend.vercel.app
 // https://crimewise-web-v2-ri4n.vercel.app
