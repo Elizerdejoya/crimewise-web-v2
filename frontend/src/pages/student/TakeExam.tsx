@@ -229,6 +229,9 @@ const TakeExam = () => {
   const [scoringDetails, setScoringDetails] = useState<any>(null);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenCountdown, setFullscreenCountdown] = useState(0);
+  const skipFullscreenEnforcementRef = useRef(false);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -297,19 +300,45 @@ const TakeExam = () => {
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
         setIsFullscreen(false);
+        if (skipFullscreenEnforcementRef.current) {
+          // We're intentionally exiting fullscreen (for example on submit).
+          // Do not re-request fullscreen in this case.
+          return;
+        }
+        // Clear any existing countdown
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        // Start a 3-second countdown before re-requesting fullscreen
+        let countdown = 3;
+        setFullscreenCountdown(countdown);
         toast({
-          title: "Warning",
-          description: "Fullscreen mode exited. Please return to fullscreen to continue the exam.",
+          title: "⚠️ Fullscreen Exited",
+          description: `Returning to fullscreen in ${countdown}...`,
           variant: "destructive",
           duration: 5000,
         });
-        requestFullscreen();
+        countdownIntervalRef.current = setInterval(() => {
+          countdown--;
+          setFullscreenCountdown(countdown);
+          if (countdown <= 0) {
+            clearInterval(countdownIntervalRef.current!);
+            countdownIntervalRef.current = null;
+            requestFullscreen();
+          }
+        }, 1000);
       }
     };
 
     requestFullscreen();
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
   }, [toast]);
 
   // Prevent accidental navigation
@@ -575,6 +604,17 @@ const TakeExam = () => {
   const handleSubmit = async () => {
     if (!exam) return;
     setIsSubmitting(true);
+    // Prevent the fullscreen enforcement from immediately re-requesting
+    // when we intentionally exit fullscreen to finish the exam.
+    skipFullscreenEnforcementRef.current = true;
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (e) {
+      console.warn("Failed to exit fullscreen before submit:", e);
+    }
     try {
       const token = localStorage.getItem("token");
       const decoded = jwtDecode<JwtTokenPayload>(token!);
@@ -1206,7 +1246,12 @@ const TakeExam = () => {
                 ⚠️ {tabSwitchCount} tab switch{tabSwitchCount > 1 ? "es" : ""}
               </span>
             )}
-            {!isFullscreen && (
+            {!isFullscreen && fullscreenCountdown > 0 && (
+              <span className="px-3 py-1 bg-red-600 border border-red-700 text-white rounded-full text-xs font-bold animate-pulse">
+                🔄 Returning to fullscreen: {fullscreenCountdown}s
+              </span>
+            )}
+            {!isFullscreen && fullscreenCountdown === 0 && (
               <span className="px-3 py-1 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-full text-xs font-medium animate-pulse">
                 ⚠️ Fullscreen required
               </span>
