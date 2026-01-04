@@ -232,6 +232,22 @@ const TakeExam = () => {
   const [fullscreenCountdown, setFullscreenCountdown] = useState(0);
   const skipFullscreenEnforcementRef = useRef(false);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
+  const submitNowRef = useRef<() => Promise<void> | null>(null);
+
+  // Try to request fullscreen; returns true on success
+  const tryRequestFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreen(true);
+      }
+      return true;
+    } catch (err) {
+      console.error("Fullscreen request failed:", err);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -286,16 +302,7 @@ const TakeExam = () => {
 
   // Fullscreen enforcement
   useEffect(() => {
-    const requestFullscreen = async () => {
-      try {
-        if (!document.fullscreenElement) {
-          await document.documentElement.requestFullscreen();
-          setIsFullscreen(true);
-        }
-      } catch (err) {
-        console.error("Fullscreen request failed:", err);
-      }
-    };
+    const requestFullscreen = tryRequestFullscreen;
 
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
@@ -319,13 +326,17 @@ const TakeExam = () => {
           variant: "destructive",
           duration: 5000,
         });
-        countdownIntervalRef.current = setInterval(() => {
+        countdownIntervalRef.current = setInterval(async () => {
           countdown--;
           setFullscreenCountdown(countdown);
           if (countdown <= 0) {
             clearInterval(countdownIntervalRef.current!);
             countdownIntervalRef.current = null;
-            requestFullscreen();
+            const ok = await requestFullscreen();
+            if (!ok) {
+              // Browser blocked automatic request; show a prompt for user to click
+              setShowFullscreenPrompt(true);
+            }
           }
         }, 1000);
       }
@@ -350,8 +361,8 @@ const TakeExam = () => {
   });
 
   useEffect(() => {
-    // Get exam info from sessionStorage
-    const examData = sessionStorage.getItem("currentExam");
+    // Get exam info from localStorage (persist across sessions)
+    const examData = localStorage.getItem("currentExam");
     if (!examData) {
       toast({
         title: "No Exam",
@@ -363,6 +374,8 @@ const TakeExam = () => {
     }
     const parsedExam = JSON.parse(examData);
     setExam(parsedExam);
+    // Mark exam as in-progress so global guard can keep user on the take-exam route
+    try { localStorage.setItem("examInProgress", "true"); } catch (e) {}
     // Fetch question details from backend
     fetch(`${API_BASE_URL}/api/questions/${parsedExam.question_id}`, {
       headers: getAuthHeaders(),
@@ -416,10 +429,10 @@ const TakeExam = () => {
         }
       });
     // Timer logic
-    let start = Number(sessionStorage.getItem("examStartTimestamp"));
+    let start = Number(localStorage.getItem("examStartTimestamp"));
     if (!start) {
       start = Date.now();
-      sessionStorage.setItem("examStartTimestamp", String(start));
+      localStorage.setItem("examStartTimestamp", String(start));
     }
     setStartTimestamp(start);
     const [mins, secs] = parsedExam.duration
@@ -427,7 +440,12 @@ const TakeExam = () => {
       .map((v: string) => parseInt(v, 10));
     const totalSeconds = mins * 60 + (secs || 0);
     const elapsed = Math.floor((Date.now() - start) / 1000);
-    setTimeLeft(Math.max(totalSeconds - elapsed, 0));
+    const remaining = Math.max(totalSeconds - elapsed, 0);
+    setTimeLeft(remaining);
+    if (remaining <= 0) {
+      // Mark that auto-submit should occur (in case automatic submission must wait until handlers are ready)
+      try { localStorage.setItem("autoSubmitPending", "true"); } catch (e) {}
+    }
   }, [navigate, toast]);
 
   useEffect(() => {
@@ -449,6 +467,40 @@ const TakeExam = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [timeLeft, startTimestamp]);
+
+  // Autosave answers to localStorage so we can recover if the user exits the site
+  useEffect(() => {
+    if (!exam) return;
+    const draftKey = `examDraft:${exam.id}`;
+    // Load draft if present
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.answer) setAnswer(parsed.answer);
+        if (parsed.explanation) setExplanation(parsed.explanation);
+        if (parsed.studentConclusion) setStudentConclusion(parsed.studentConclusion);
+      }
+    } catch (e) {
+      console.error('Error loading exam draft:', e);
+    }
+
+    const interval = setInterval(() => {
+      try {
+        const payload = {
+          answer,
+          explanation,
+          studentConclusion,
+          updatedAt: Date.now(),
+        };
+        localStorage.setItem(draftKey, JSON.stringify(payload));
+      } catch (e) {
+        console.error('Error autosaving draft:', e);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [exam, answer, explanation, studentConclusion]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1015,8 +1067,10 @@ const TakeExam = () => {
             : "Your answers have been recorded successfully.",
       });
 
-      sessionStorage.removeItem("currentExam");
-      sessionStorage.removeItem("examStartTimestamp");
+      localStorage.removeItem("currentExam");
+      localStorage.removeItem("examStartTimestamp");
+      try { localStorage.removeItem("examInProgress"); } catch (e) {}
+      try { localStorage.removeItem(`examDraft:${exam.id}`); } catch (e) {}
       navigate("/student/results");
     } catch (err: any) {
       toast({
@@ -1028,6 +1082,23 @@ const TakeExam = () => {
       setIsSubmitting(false);
     }
   };
+
+    // Expose submit function to earlier effects; if an auto-submit was pending while user was away, trigger it now
+    useEffect(() => {
+      submitNowRef.current = handleSubmit;
+      try {
+        const pending = localStorage.getItem("autoSubmitPending") === "true";
+        if (pending) {
+          localStorage.removeItem("autoSubmitPending");
+          // Fire-and-forget submission
+          (async () => {
+            await handleSubmit();
+          })();
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, [handleSubmit]);
 
   // Leave exam functionality removed for exam integrity
 
@@ -1397,6 +1468,38 @@ const TakeExam = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {showFullscreenPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full text-center">
+            <h3 className="text-xl font-bold mb-3">Fullscreen Required</h3>
+            <p className="text-sm text-slate-700 mb-4">The browser blocked automatic fullscreen re-entry. Please click the button below to return to fullscreen.</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                onClick={async () => {
+                  const ok = await tryRequestFullscreen();
+                  if (ok) {
+                    setShowFullscreenPrompt(false);
+                    setFullscreenCountdown(0);
+                  }
+                }}
+              >
+                Return to fullscreen
+              </button>
+              <button
+                className="bg-gray-200 text-slate-800 px-4 py-2 rounded"
+                onClick={() => {
+                  setShowFullscreenPrompt(false);
+                  // Allow user to choose to submit instead
+                }}
+              >
+                Continue without fullscreen
+              </button>
+            </div>
+            <div className="mt-4 text-xs text-slate-500">If you continue without fullscreen your exam may be flagged.</div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

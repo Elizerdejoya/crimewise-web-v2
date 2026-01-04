@@ -130,8 +130,8 @@ const EnterExam = () => {
             description: "Starting your exam...",
           });
 
-          // Store exam info in sessionStorage for TakeExam page
-          sessionStorage.setItem("currentExam", JSON.stringify(exam));
+          // Store exam info in localStorage for TakeExam page (persist across sessions)
+          localStorage.setItem("currentExam", JSON.stringify(exam));
 
           // Navigate to the exam in the same tab
           navigate("/student/take-exam");

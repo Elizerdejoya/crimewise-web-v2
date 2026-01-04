@@ -2,7 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import TitleManager from "@/components/TitleManager";
 import Index from "./pages/Index";
 import Login from "./pages/auth/Login";
@@ -45,14 +46,27 @@ import ExamPdf from "./pages/instructor/ExamPdf";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <TitleManager />
-        <Routes>
+const AppInner = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Global guard: if an exam is in progress, force route to /student/take-exam
+  useEffect(() => {
+    try {
+      const inExam = localStorage.getItem("examInProgress") === "true";
+      const isTakeExamPath = location.pathname === "/student/take-exam";
+      if (inExam && !isTakeExamPath) {
+        navigate("/student/take-exam", { replace: true });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [location.pathname, navigate]);
+
+  return (
+    <>
+      <TitleManager />
+      <Routes>
           {/* Public routes */}
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
@@ -294,7 +308,18 @@ const App = () => (
 
           {/* Catch-all route */}
           <Route path="*" element={<NotFound />} />
-        </Routes>
+      </Routes>
+    </>
+  );
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <AppInner />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
