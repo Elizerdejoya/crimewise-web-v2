@@ -50,7 +50,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   const [forensicRows, setForensicRows] = useState<ForensicAnswerRow[]>([]);
   const [explanation, setExplanation] = useState("");
   const [explanationPoints, setExplanationPoints] = useState(0);
-  const [rubrics, setRubrics] = useState({ accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 });
+  const [rubrics, setRubrics] = useState({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
   const [standardImages, setStandardImages] = useState<string[]>([]);
   const [questionImages, setQuestionImages] = useState<string[]>([]);
   const [selectedKeywordPool, setSelectedKeywordPool] = useState<any>(null);
@@ -85,15 +85,14 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
         setSelectedKeywordPool(null);
         setSelectedKeywords([]);
       }
-      // Load rubrics if present
+      // Load rubrics if present (support legacy keys and new keys)
       if (question && question.rubrics) {
         try {
           const parsed = typeof question.rubrics === 'string' ? JSON.parse(question.rubrics) : question.rubrics;
           setRubrics({
-            accuracy: Number(parsed.accuracy ?? 40),
-            completeness: Number(parsed.completeness ?? 30),
-            clarity: Number(parsed.clarity ?? 20),
-            objectivity: Number(parsed.objectivity ?? 10),
+            findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 70),
+            objectivity: Number(parsed.objectivity ?? 15),
+            structure: Number(parsed.structure ?? parsed.completeness ?? 15),
           });
         } catch (e) {
           // ignore
@@ -544,37 +543,16 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
             <Label>Rubric Weights (%)</Label>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Accuracy</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rubrics.accuracy}
-                  onChange={e => setRubrics({...rubrics, accuracy: Number(e.target.value)})}
-                  placeholder="Accuracy %"
-                />
-              </div>
-              <div className="space-y-1">
                 <Label className="text-xs text-gray-600">Completeness</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
-                  value={rubrics.completeness}
-                  onChange={e => setRubrics({...rubrics, completeness: Number(e.target.value)})}
+                  value={rubrics.findingsSimilarity}
+                  onChange={e => setRubrics({...rubrics, findingsSimilarity: Number(e.target.value)})}
                   placeholder="Completeness %"
                 />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Clarity</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rubrics.clarity}
-                  onChange={e => setRubrics({...rubrics, clarity: Number(e.target.value)})}
-                  placeholder="Clarity %"
-                />
+                <div className="text-xs text-muted-foreground">conclusion + keyword coverage</div>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-gray-600">Objectivity</Label>
@@ -586,10 +564,24 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                   onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})}
                   placeholder="Objectivity %"
                 />
+                <div className="text-xs text-muted-foreground">no subjective language</div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-600">Structure / Reasoning</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={rubrics.structure}
+                  onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})}
+                  placeholder="Structure %"
+                />
+                <div className="text-xs text-muted-foreground">contains reasoning words</div>
               </div>
             </div>
+            <div className="text-xs text-gray-500 mt-2">Default: 70+15+15=100</div>
             <div className="text-xs text-gray-500">
-              Total: {rubrics.accuracy + rubrics.completeness + rubrics.clarity + rubrics.objectivity}%
+              Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%
             </div>
           </div>
 

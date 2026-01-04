@@ -591,26 +591,69 @@ router.post(
             conclusionCorrect
           });
           
-          // Build findings string from studentFindings (could be object or string)
+          // Build findings string from studentFindings (could be object or JSON string)
           let studentFindingsStr = studentFindings;
-          if (typeof studentFindings === 'object') {
-            // If it's an object with explanation field, use that
-            studentFindingsStr = studentFindings.explanation || JSON.stringify(studentFindings);
+          let studentConclusion = null;
+          try {
+            if (typeof studentFindings === 'string') {
+              try {
+                const parsedStudent = JSON.parse(studentFindings);
+                if (parsedStudent?.explanation) {
+                  if (typeof parsedStudent.explanation === 'string') studentFindingsStr = parsedStudent.explanation;
+                  else if (parsedStudent.explanation?.text) studentFindingsStr = parsedStudent.explanation.text;
+                  if (parsedStudent.explanation?.conclusion) studentConclusion = parsedStudent.explanation.conclusion;
+                }
+              } catch (e) {
+                // not JSON, leave as-is
+              }
+            } else if (typeof studentFindings === 'object' && studentFindings) {
+              if (studentFindings.explanation) {
+                if (typeof studentFindings.explanation === 'string') studentFindingsStr = studentFindings.explanation;
+                else if (studentFindings.explanation?.text) studentFindingsStr = studentFindings.explanation.text;
+                if (studentFindings.explanation?.conclusion) studentConclusion = studentFindings.explanation.conclusion;
+              } else {
+                studentFindingsStr = JSON.stringify(studentFindings);
+              }
+            }
+          } catch (e) {
+            studentFindingsStr = typeof studentFindings === 'string' ? studentFindings : JSON.stringify(studentFindings);
           }
 
-          console.log(`[EXAMS][SUBMIT] Extracted studentFindingsStr:`, studentFindingsStr);
+          console.log(`[EXAMS][SUBMIT] Extracted studentFindingsStr:`, studentFindingsStr, 'studentConclusion:', studentConclusion);
 
           // Calculate scores using string similarity
           const stringSimilarity = require('string-similarity');
 
           const studentClean = studentFindingsStr ? studentFindingsStr.toLowerCase().trim() : '';
 
-          // Normalize teacher findings: prefer full explanation text when available.
+          // Normalize teacher findings: extract explanation.text when available and extract conclusion.
           // If teacherFindings is a short token (eg. 'fake'/'real') or otherwise short,
           // attempt to load the question explanation from the DB (exam -> question).
           let teacherFindingsStr = teacherFindings;
-          if (typeof teacherFindings === 'object') {
-            teacherFindingsStr = teacherFindings.explanation || JSON.stringify(teacherFindings);
+          let teacherConclusion = null;
+          try {
+            if (typeof teacherFindings === 'string') {
+              try {
+                const parsedTeacher = JSON.parse(teacherFindings);
+                if (parsedTeacher?.explanation) {
+                  if (typeof parsedTeacher.explanation === 'string') teacherFindingsStr = parsedTeacher.explanation;
+                  else if (parsedTeacher.explanation?.text) teacherFindingsStr = parsedTeacher.explanation.text;
+                  if (parsedTeacher.explanation?.conclusion) teacherConclusion = parsedTeacher.explanation.conclusion;
+                }
+              } catch (e) {
+                // not JSON, leave as-is
+              }
+            } else if (typeof teacherFindings === 'object' && teacherFindings) {
+              if (teacherFindings.explanation) {
+                if (typeof teacherFindings.explanation === 'string') teacherFindingsStr = teacherFindings.explanation;
+                else if (teacherFindings.explanation?.text) teacherFindingsStr = teacherFindings.explanation.text;
+                if (teacherFindings.explanation?.conclusion) teacherConclusion = teacherFindings.explanation.conclusion;
+              } else {
+                teacherFindingsStr = JSON.stringify(teacherFindings);
+              }
+            }
+          } catch (e) {
+            teacherFindingsStr = typeof teacherFindings === 'string' ? teacherFindings : JSON.stringify(teacherFindings);
           }
           try {
             const tLower = (teacherFindingsStr || '').toString().toLowerCase().trim();
@@ -653,6 +696,19 @@ router.post(
 
           const teacherClean = teacherFindingsStr ? teacherFindingsStr.toLowerCase().trim() : '';
 
+          // Determine conclusion correctness: prefer explicit `conclusionCorrect` in request,
+          // otherwise compare extracted studentConclusion and teacherConclusion when both available.
+          let conclusionCorrectLocal = conclusionCorrect;
+          if (typeof conclusionCorrectLocal !== 'boolean') {
+            if (studentConclusion != null && teacherConclusion != null) {
+              conclusionCorrectLocal = String(studentConclusion).toLowerCase().trim() === String(teacherConclusion).toLowerCase().trim();
+            } else {
+              conclusionCorrectLocal = false;
+            }
+          }
+
+          console.log(`[EXAMS][SUBMIT] Extracted teacherFindingsStr:`, teacherFindingsStr, 'teacherConclusion:', teacherConclusion, 'final conclusionCorrect:', conclusionCorrectLocal);
+
           console.log(`[EXAMS][SUBMIT] Comparing findings:`, {
             student: studentClean,
             teacher: teacherClean,
@@ -660,8 +716,46 @@ router.post(
             teacherLen: teacherClean.length
           });
 
-          // Use multiple similarity metrics
-          let similarity = stringSimilarity.compareTwoStrings(studentClean, teacherClean);
+          // Word-based similarity: how many key words from expected answer appear in student answer
+          function calculateWordSimilarity(studentText, teacherText) {
+            // Split into words, remove punctuation, convert to lowercase
+            const studentWords = studentText
+              .toLowerCase()
+              .replace(/[.,!?;:\-()]/g, ' ')
+              .split(/\s+/)
+              .filter(w => w.length > 0);
+            
+            const teacherWords = teacherText
+              .toLowerCase()
+              .replace(/[.,!?;:\-()]/g, ' ')
+              .split(/\s+/)
+              .filter(w => w.length > 0);
+
+            if (teacherWords.length === 0) return 0;
+
+            // Count how many expected words appear in student answer
+            let matchedCount = 0;
+            teacherWords.forEach(expectedWord => {
+              if (studentWords.includes(expectedWord)) {
+                matchedCount++;
+              }
+            });
+
+            // Word similarity: percentage of expected words found in student answer
+            const wordSimilarity = matchedCount / teacherWords.length;
+            
+            console.log(`[EXAMS][SUBMIT] Word similarity:`, {
+              teacherWords,
+              studentWords,
+              matchedCount,
+              wordSimilarity: Math.round(wordSimilarity * 100)
+            });
+
+            return wordSimilarity;
+          }
+
+          // Use word-based similarity instead of character-based
+          let similarity = calculateWordSimilarity(studentClean, teacherClean);
 
           console.log(`[EXAMS][SUBMIT] Raw similarity before boost: ${similarity}`);
 
@@ -677,49 +771,61 @@ router.post(
 
           console.log(`[EXAMS][SUBMIT] Boosted similarity: ${similarity}, charDiff: ${charDiff}`);
 
-          // Accuracy: text similarity (0-100)
-          const accuracy = Math.round(similarity * 100);
+          // ======== NEW RUBRIC SCORING (Accuracy + Objectivity + Structure/Reasoning) ========
+          // ACCURACY: 50% conclusion + 50% text match
+          const textSimilarityScore = Math.round(similarity * 100);
+          const conclusionScore = conclusionCorrectLocal === true ? 100 : 0;
+          let accuracyScore = (conclusionScore * 0.5) + (textSimilarityScore * 0.5);
 
-          // Completeness: length match (if student answer is shorter, penalize)
-          const lengthRatio = teacherClean.length > 0 ? (studentClean.length / teacherClean.length) : 0;
-          const completeness = Math.round(Math.min(lengthRatio, 1) * 100);
+          // OBJECTIVITY: Check for subjective/opinion words
+          function calculateObjectivity(text) {
+            const subjectiveWords = ['i think', 'i believe', 'i feel', 'i assume', 'seems', 'appears', 'maybe', 'perhaps', 'likely', 'probably', 'in my opinion', 'imho', 'arguably', 'supposedly'];
+            const lowerText = (text || '').toLowerCase();
+            const hasSubjective = subjectiveWords.some(word => lowerText.includes(word));
+            return hasSubjective ? 0 : 100;
+          }
+          let objectivityScore = calculateObjectivity(studentFindingsStr);
 
-          // Clarity: if similarity is high, assume clarity is good
-          const clarity = Math.round(similarity * 100);
+          // STRUCTURE/REASONING: Check for reasoning words
+          function calculateStructure(text, conclusion) {
+            const reasoningWords = ['because', 'therefore', 'thus', 'as a result', 'due to', 'caused by', 'resulting in', 'consequently', 'hence'];
+            const lowerText = (text || '').toLowerCase();
+            const hasReasoning = reasoningWords.some(word => lowerText.includes(word));
+            if (conclusion === true) {
+              return hasReasoning ? 100 : 50;
+            } else {
+              return hasReasoning ? 50 : 0;
+            }
+          }
+          let structureScore = calculateStructure(studentFindingsStr, conclusionCorrectLocal);
 
-          // Objectivity: if similarity is high, assume objectivity is good
-          const objectivity = Math.round(similarity * 100);
-
-          // Weighted average: 25% accuracy + 25% completeness + 25% clarity + 25% objectivity
-          let similarityScore = Math.round(
-            (accuracy * 0.25) + (completeness * 0.25) + (clarity * 0.25) + (objectivity * 0.25)
-          );
-
-          // NEW SCORING FORMULA:
-          // Correct conclusion: 70% base score
-          // Wrong conclusion: 20% base score
-          // Findings similarity: 30% additional score based on similarity
-          let finalScore = 0;
-          if (conclusionCorrect === true) {
-            finalScore = 70 + (30 * (similarityScore / 100));
-          } else {
-            finalScore = 20 + (30 * (similarityScore / 100));
+          // If there is no student findings text AND no student conclusion, set all component scores to zero
+          const hasStudentFindings = (studentFindingsStr && String(studentFindingsStr).trim().length > 0);
+          const hasStudentConclusion = (studentConclusion != null && String(studentConclusion).trim().length > 0);
+          if (!hasStudentFindings && !hasStudentConclusion) {
+            accuracyScore = 0;
+            objectivityScore = 0;
+            structureScore = 0;
           }
 
-          finalScore = Math.round(finalScore);
+          // Overall score: Accuracy 70%, Objectivity 15%, Structure 15%
+          const overallScore = Math.round(
+            (accuracyScore / 100 * 70) + 
+            (objectivityScore / 100 * 15) + 
+            (structureScore / 100 * 15)
+          );
 
-          console.log(`[EXAMS][SUBMIT] Calculated scores:`, { 
-            accuracy, completeness, clarity, objectivity, 
-            similarityScore, 
-            conclusionCorrect, 
-            finalScore, 
-            similarity, 
-            charDiff 
+          console.log(`[EXAMS][SUBMIT] Calculated NEW RUBRIC scores:`, { 
+            accuracyScore,
+            objectivityScore,
+            structureScore,
+            overallScore,
+            conclusionCorrect: conclusionCorrectLocal
           });
 
           const aiResponse = await db.sql`
             INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)
-            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindings}, ${finalScore}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity})
+            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindingsStr}, ${overallScore}, ${Math.round(accuracyScore)}, ${Math.round(structureScore)}, ${Math.round(objectivityScore)}, ${Math.round(objectivityScore)})
             ON CONFLICT (student_id, exam_id) DO UPDATE SET
               student_findings = EXCLUDED.student_findings,
               teacher_findings = EXCLUDED.teacher_findings,

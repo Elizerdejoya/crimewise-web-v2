@@ -60,7 +60,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   ]);
   const [explanation, setExplanation] = useState("");
   const [explanationPoints, setExplanationPoints] = useState(1);
-  const [rubrics, setRubrics] = useState({ accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 });
+  const [rubrics, setRubrics] = useState({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
   const [forensicConclusion, setForensicConclusion] = useState<
     "fake" | "real" | ""
   >("");
@@ -230,6 +230,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     ]);
     setExplanation("");
     setExplanationPoints(1);
+    setRubrics({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
     setForensicConclusion("");
     setSelectedKeywordPool(null);
     setSelectedKeywords([]);
@@ -450,7 +451,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="question-text">Question Text</Label>
+            <Label htmlFor="question-text">Instructions</Label>
             <Textarea
               id="question-text"
               value={form.text}
@@ -643,7 +644,6 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             
             <div className="text-sm text-muted-foreground">
               Select a keyword pool to provide predefined keywords for answer evaluation.
-              You can choose specific keywords from the pool to use for this question.
             </div>
           </div>
 
@@ -777,25 +777,24 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             <Label>Rubric Weights (editable)</Label>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="text-sm">Accuracy (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.accuracy} onChange={e => setRubrics({ ...rubrics, accuracy: Number(e.target.value) })} />
-              </div>
-              <div>
                 <Label className="text-sm">Completeness (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.completeness} onChange={e => setRubrics({ ...rubrics, completeness: Number(e.target.value) })} />
-              </div>
-              <div>
-                <Label className="text-sm">Clarity (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.clarity} onChange={e => setRubrics({ ...rubrics, clarity: Number(e.target.value) })} />
+                <Input type="number" min={0} max={100} value={rubrics.findingsSimilarity} onChange={e => setRubrics({ ...rubrics, findingsSimilarity: Number(e.target.value) })} />
+                <div className="text-xs text-muted-foreground">conclusion + keyword coverage</div>
               </div>
               <div>
                 <Label className="text-sm">Objectivity (%)</Label>
                 <Input type="number" min={0} max={100} value={rubrics.objectivity} onChange={e => setRubrics({ ...rubrics, objectivity: Number(e.target.value) })} />
+                <div className="text-xs text-muted-foreground">no subjective language</div>
+              </div>
+              <div>
+                <Label className="text-sm">Structure / Reasoning (%)</Label>
+                <Input type="number" min={0} max={100} value={rubrics.structure} onChange={e => setRubrics({ ...rubrics, structure: Number(e.target.value) })} />
+                <div className="text-xs text-muted-foreground">contains reasoning words</div>
               </div>
             </div>
-            <div className="text-sm text-muted-foreground">Sum of rubric weights should ideally equal 100. These weights will be used by the AI grader.</div>
+            <div className="text-sm text-muted-foreground">Sum of rubric weights should equal 100.</div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="explanation">Explanation</Label>
+              <Label htmlFor="explanation">Explanation/Findings</Label>
               <div className="flex items-center gap-2">
                 <Label htmlFor="explanation-points" className="text-sm">
                   Points:
@@ -841,12 +840,11 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
               id="explanation"
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
-              placeholder="Enter an explanation for the table comparison..."
+              placeholder="Enter an expected explanation or keywordsfor the table comparison..."
               rows={4}
             />
             <div className="text-sm text-muted-foreground">
-              Select the main conclusion and add an explanation. The system will
-              check if the explanation is related to forensic science.
+              Select the main conclusion and add an expected explanation or key phrases .
             </div>
           </div>
         </div>

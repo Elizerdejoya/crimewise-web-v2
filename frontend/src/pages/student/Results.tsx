@@ -185,12 +185,19 @@ const Results = () => {
   };
 
   // Default rubric weights used for fallback distribution when component scores are missing/zero
-  // Weights as percentages: Accuracy 40%, Clarity 20%, Completeness 30%, Objectivity 10%
+  // Weights as percentages: Findings Similarity 40%, Clarity 20%, Objectivity 10%, Structure/Reasoning 30%
   const DEFAULT_RUBRIC_WEIGHTS: Record<string, number> = {
-    accuracy: 40,
+    findingsSimilarity: 40,
     clarity: 20,
-    completeness: 30,
     objectivity: 10,
+    structure: 30,
+  };
+
+  const RUBRIC_LABELS: Record<string, string> = {
+    findingsSimilarity: "Findings Similarity (how much the student's findings text matches the teacher's findings)",
+    clarity: "Clarity (is the explanation easy to read and understand)",
+    objectivity: "Objectivity (how objective (non‑opinionated) the language is)",
+    structure: "Structure / Reasoning (does the answer show evidence)",
   };
 
   // Search function
@@ -340,7 +347,7 @@ const Results = () => {
     if (aiGradeData) {
       try {
         const overall = Number(aiGradeData.score ?? aiGradeData.overall ?? NaN);
-        const keys = ['accuracy', 'completeness', 'clarity', 'objectivity'];
+        const keys = ['findingsSimilarity', 'clarity', 'objectivity', 'structure'];
         // Read raw component values
         const rawVals = keys.map(k => {
           const v = aiGradeData?.[k];
@@ -351,10 +358,10 @@ const Results = () => {
         const anyPositive = rawVals.some(v => v !== null && v > 0);
         // Prepare display values
         const displayVals: Record<string, number | null> = {
-          accuracy: null,
-          completeness: null,
+          findingsSimilarity: null,
           clarity: null,
           objectivity: null,
+          structure: null,
         };
 
         if (anyPositive) {
@@ -391,10 +398,10 @@ const Results = () => {
           <div style="margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px;">
             <h3 style="margin: 0 0 8px 0; font-size: 14px;">Rubric Breakdown</h3>
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 12px;">
-              <div><strong>Accuracy:</strong> ${fmtComp(displayVals.accuracy)}</div>
-              <div><strong>Completeness:</strong> ${fmtComp(displayVals.completeness)}</div>
+              <div><strong>Findings Similarity:</strong> ${fmtComp(displayVals.findingsSimilarity)}</div>
               <div><strong>Clarity:</strong> ${fmtComp(displayVals.clarity)}</div>
               <div><strong>Objectivity:</strong> ${fmtComp(displayVals.objectivity)}</div>
+              <div><strong>Structure / Reasoning:</strong> ${fmtComp(displayVals.structure)}</div>
               <div style="grid-column: 1 / -1; margin-top: 8px;"><strong>Overall Score:</strong> ${!Number.isNaN(overall) ? `${Math.round(overall)}%` : '-'}</div>
             </div>
             ${aiGradeData.feedback ? `<div style="margin-top: 10px;"><strong>AI Explanation:</strong><div style="margin-top: 6px; white-space: pre-wrap; font-size: 12px;">${aiGradeData.feedback}</div></div>` : ''}
@@ -1054,9 +1061,11 @@ const Results = () => {
                                           // an overall score exists, derive an approximate per-rubric value by
                                           // evenly distributing the overall percent across the rubrics.
                                           const overall = Number(selectedAiGrade.score ?? selectedAiGrade.overall ?? NaN);
-                                          const keys = ['accuracy','completeness','clarity','objectivity'];
+                                          const dbKeys = ['accuracy','objectivity','structure'];
+                                          const displayKeyMap: Record<string, string> = { accuracy: 'completeness', objectivity: 'objectivity', structure: 'structure' };
+                                          
                                           // Read raw component values (may be undefined/null/0)
-                                          const rawVals = keys.map(k => {
+                                          const rawVals = dbKeys.map(k => {
                                             const v = selectedAiGrade?.[k];
                                             const n = v === undefined || v === null ? null : (Number.isNaN(Number(v)) ? null : Number(v));
                                             return n;
@@ -1067,37 +1076,34 @@ const Results = () => {
 
                                           // Prepare display values and mark which are derived
                                           const displayVals: Record<string, { val: number | null; derived: boolean }> = {
-                                            accuracy: { val: null, derived: false },
                                             completeness: { val: null, derived: false },
-                                            clarity: { val: null, derived: false },
                                             objectivity: { val: null, derived: false },
+                                            structure: { val: null, derived: false },
                                           };
 
                                           if (anyPositive) {
-                                            // Use actual positive component values; for zero/null components derive from overall using formula
-                                            const knownMap: Record<string, number> = {};
-                                            keys.forEach((k, i) => {
+                                            // Map database keys to display keys and fill values
+                                            dbKeys.forEach((dbKey, i) => {
+                                              const displayKey = displayKeyMap[dbKey];
                                               const v = rawVals[i];
-                                              if (v !== null && v > 0) knownMap[k] = Math.round(v);
-                                            });
-                                            // Fill known values, derive missing by formula
-                                            Object.entries(knownMap).forEach(([k, v]) => { displayVals[k].val = Math.max(0, Math.min(100, v)); displayVals[k].derived = false; });
-                                            // For missing keys, derive from overall using weights
-                                            keys.forEach((k) => {
-                                              if (!(k in knownMap)) {
-                                                const weight = (DEFAULT_RUBRIC_WEIGHTS[k] || 0) / 100;
+                                              if (v !== null && v > 0) {
+                                                displayVals[displayKey].val = Math.max(0, Math.min(100, Math.round(v)));
+                                                displayVals[displayKey].derived = false;
+                                              } else if (!Number.isNaN(overall)) {
+                                                // Derive missing from overall using weights
+                                                const weight = (DEFAULT_RUBRIC_WEIGHTS[displayKey] || 0) / 100;
                                                 const derived = Math.round(Math.round(overall) * weight);
-                                                displayVals[k].val = Math.max(0, Math.min(100, derived));
-                                                displayVals[k].derived = true;
+                                                displayVals[displayKey].val = Math.max(0, Math.min(100, derived));
+                                                displayVals[displayKey].derived = true;
                                               }
                                             });
                                           } else if (!Number.isNaN(overall)) {
                                             // No positive components present: compute all by formula S × (W / 100)
-                                            keys.forEach((k) => {
-                                              const weight = (DEFAULT_RUBRIC_WEIGHTS[k] || 0) / 100;
+                                            Object.keys(displayVals).forEach((displayKey) => {
+                                              const weight = (DEFAULT_RUBRIC_WEIGHTS[displayKey] || 0) / 100;
                                               const computed = Math.round(Math.round(overall) * weight);
-                                              displayVals[k].val = Math.max(0, Math.min(100, computed));
-                                              displayVals[k].derived = true;
+                                              displayVals[displayKey].val = Math.max(0, Math.min(100, computed));
+                                              displayVals[displayKey].derived = true;
                                             });
                                           }
 
@@ -1105,10 +1111,9 @@ const Results = () => {
 
                                           return (
                                             <div className="grid grid-cols-2 gap-2 text-sm mb-2">
-                                              <div><strong>Accuracy:</strong> {showPercent(displayVals.accuracy.val, displayVals.accuracy.derived)}</div>
                                               <div><strong>Completeness:</strong> {showPercent(displayVals.completeness.val, displayVals.completeness.derived)}</div>
-                                              <div><strong>Clarity:</strong> {showPercent(displayVals.clarity.val, displayVals.clarity.derived)}</div>
                                               <div><strong>Objectivity:</strong> {showPercent(displayVals.objectivity.val, displayVals.objectivity.derived)}</div>
+                                              <div><strong>Structure / Reasoning:</strong> {showPercent(displayVals.structure.val, displayVals.structure.derived)}</div>
                                               <div className="col-span-2 mt-2"><strong>Overall Score:</strong> {!Number.isNaN(overall) ? `${Math.round(overall)}%` : '-'}</div>
                                             </div>
                                           );

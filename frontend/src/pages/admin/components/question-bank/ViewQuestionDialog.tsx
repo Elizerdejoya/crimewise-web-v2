@@ -128,7 +128,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
     return null;
   }, [question]);
 
-  // Parse rubrics - always show with defaults if not explicitly set (same as TakeExam does)
+  // Parse rubrics - always show with defaults if not explicitly set (support legacy keys)
   const rubricsObj = useMemo(() => {
     if (!question) return null;
 
@@ -136,19 +136,19 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
       if (question.rubrics) {
         const parsed = typeof question.rubrics === 'string' ? JSON.parse(question.rubrics) : question.rubrics;
         return {
-          accuracy: Number(parsed.accuracy ?? 40),
-          completeness: Number(parsed.completeness ?? 30),
+          findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 40),
           clarity: Number(parsed.clarity ?? 20),
           objectivity: Number(parsed.objectivity ?? 10),
+          structure: Number(parsed.structure ?? parsed.completeness ?? 30),
         };
       } else {
-        // Default rubrics if none assigned (same as TakeExam)
-        return { accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 };
+        // Default rubrics if none assigned
+        return { findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 };
       }
     } catch (e) {
       console.error('Error parsing question rubrics:', e);
       // Fallback to defaults
-      return { accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 };
+      return { findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 };
     }
   }, [question]);
 
@@ -264,10 +264,10 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
             <div className="bg-gray-50 border rounded-md p-3 text-sm">
               <div className="font-semibold mb-1">Instructor rubric weights</div>
               <div className="grid grid-cols-2 gap-2">
-                <div><strong>Accuracy</strong><div className="text-muted-foreground">{rubricsObj.accuracy}%</div></div>
-                <div><strong>Completeness</strong><div className="text-muted-foreground">{rubricsObj.completeness}%</div></div>
+                <div><strong>Findings Similarity</strong><div className="text-muted-foreground">{rubricsObj.findingsSimilarity}%</div></div>
                 <div><strong>Clarity</strong><div className="text-muted-foreground">{rubricsObj.clarity}%</div></div>
                 <div><strong>Objectivity</strong><div className="text-muted-foreground">{rubricsObj.objectivity}%</div></div>
+                <div><strong>Structure / Reasoning</strong><div className="text-muted-foreground">{rubricsObj.structure}%</div></div>
               </div>
             </div>
           )}

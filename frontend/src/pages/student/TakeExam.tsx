@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate, useBeforeUnload, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -270,35 +270,7 @@ const TakeExam = () => {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [toast]);
 
-  // Copy-paste prevention
-  useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "v" || e.key === "x")) {
-        e.preventDefault();
-        toast({
-          title: "Not Allowed",
-          description: "Copy, paste, and cut are disabled during exams for integrity.",
-          variant: "destructive",
-          duration: 3000,
-        });
-      }
-    };
-    const handleCopy = (e: ClipboardEvent) => e.preventDefault();
-    const handleDragStart = (e: DragEvent) => e.preventDefault();
 
-    document.addEventListener("contextmenu", handleContextMenu);
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("copy", handleCopy);
-    document.addEventListener("dragstart", handleDragStart);
-
-    return () => {
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("copy", handleCopy);
-      document.removeEventListener("dragstart", handleDragStart);
-    };
-  }, [toast]);
 
   // Fullscreen enforcement
   useEffect(() => {
@@ -395,7 +367,7 @@ const TakeExam = () => {
       .then((q) => {
         setQuestion(q);
         // Initialize answer structure based on question data
-        if (q.type === "forensic" && q.answer) {
+            if (q.type === "forensic" && q.answer) {
           try {
             // Parse the answer which now has a different structure
             const parsedAnswer = JSON.parse(q.answer || "{}");
@@ -404,7 +376,8 @@ const TakeExam = () => {
               parsedAnswer.specimens &&
               Array.isArray(parsedAnswer.specimens)
             ) {
-              setAnswer(Array(parsedAnswer.specimens.length).fill({}));
+              // create array of independent empty objects to avoid shared references
+              setAnswer(Array.from({ length: parsedAnswer.specimens.length }, () => ({})));
             }
           } catch (e) {
             console.error("Error parsing forensic answer:", e);
@@ -414,17 +387,17 @@ const TakeExam = () => {
             if (q && q.rubrics) {
               const parsed = typeof q.rubrics === 'string' ? JSON.parse(q.rubrics) : q.rubrics;
               setRubrics({
-                accuracy: Number(parsed.accuracy ?? 40),
-                completeness: Number(parsed.completeness ?? 30),
+                findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 40),
                 clarity: Number(parsed.clarity ?? 20),
                 objectivity: Number(parsed.objectivity ?? 10),
+                structure: Number(parsed.structure ?? parsed.completeness ?? 30),
               });
             } else {
-              setRubrics({ accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 });
+              setRubrics({ findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 });
             }
           } catch (e) {
             console.error('Error parsing question rubrics:', e);
-            setRubrics({ accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 });
+            setRubrics({ findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 });
           }
         }
       });
@@ -468,23 +441,36 @@ const TakeExam = () => {
     return () => clearInterval(timer);
   }, [timeLeft, startTimestamp]);
 
-  // Autosave answers to localStorage so we can recover if the user exits the site
+  // Load draft from localStorage on exam mount (only once)
   useEffect(() => {
     if (!exam) return;
     const draftKey = `examDraft:${exam.id}`;
-    // Load draft if present
     try {
       const raw = localStorage.getItem(draftKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.answer) setAnswer(parsed.answer);
+        if (parsed.answer) {
+          // support old/new draft formats: either an array of row objects or object with tableAnswers
+          if (Array.isArray(parsed.answer)) {
+            setAnswer(parsed.answer);
+          } else if (parsed.answer?.tableAnswers && Array.isArray(parsed.answer.tableAnswers)) {
+            setAnswer(parsed.answer.tableAnswers);
+          } else {
+            setAnswer(parsed.answer);
+          }
+        }
         if (parsed.explanation) setExplanation(parsed.explanation);
         if (parsed.studentConclusion) setStudentConclusion(parsed.studentConclusion);
       }
     } catch (e) {
       console.error('Error loading exam draft:', e);
     }
+  }, [exam?.id]); // Only load draft once when exam loads
 
+  // Autosave answers to localStorage every 5 seconds (separate effect to avoid constant re-setup)
+  useEffect(() => {
+    if (!exam) return;
+    const draftKey = `examDraft:${exam.id}`;
     const interval = setInterval(() => {
       try {
         const payload = {
@@ -500,7 +486,7 @@ const TakeExam = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [exam, answer, explanation, studentConclusion]);
+  }, [exam?.id, answer, explanation, studentConclusion]); // Dependencies for autosave logic
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -569,6 +555,109 @@ const TakeExam = () => {
       .filter((word) => !commonWords.has(word.toLowerCase()) && word.length > 1)
       .join(" ")
       .trim();
+  };
+
+  // ============ NEW RUBRIC SCORING ALGORITHM ============
+  
+  // 1. Findings Similarity: Lexical match between student and teacher findings
+  const computeFindingsSimilarity = (studentText: string, teacherText: string): number => {
+    if (!studentText || !teacherText) return 0;
+    
+    const clean1 = cleanText(studentText);
+    const clean2 = cleanText(teacherText);
+    
+    if (!clean1 || !clean2) return 0;
+    
+    const words1 = new Set(clean1.split(/\s+/));
+    const words2 = new Set(clean2.split(/\s+/));
+    
+    const intersection = new Set([...words1].filter(w => words2.has(w)));
+    const union = new Set([...words1, ...words2]);
+    
+    return union.size > 0 ? (intersection.size / union.size) * 100 : 0;
+  };
+
+  // 2. Clarity: Sentence length and readability (Flesch-Kincaid inspired)
+  const computeClarity = (text: string): number => {
+    if (!text || text.trim().length === 0) return 0;
+    
+    // Split into sentences
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    if (sentences.length === 0) return 0;
+    
+    // Estimate syllable count (simplified)
+    const estimateSyllables = (word: string): number => {
+      const w = word.toLowerCase();
+      let count = 0;
+      const vowels = "aeiouy";
+      let prevWasVowel = false;
+      
+      for (let i = 0; i < w.length; i++) {
+        const isVowel = vowels.includes(w[i]);
+        if (isVowel && !prevWasVowel) count++;
+        prevWasVowel = isVowel;
+      }
+      
+      // Adjust for silent e
+      if (w.endsWith('e')) count--;
+      
+      return Math.max(1, count);
+    };
+    
+    let totalWords = 0;
+    let totalSyllables = 0;
+    
+    sentences.forEach(sent => {
+      const words = sent.trim().split(/\s+/);
+      totalWords += words.length;
+      words.forEach(w => {
+        totalSyllables += estimateSyllables(w);
+      });
+    });
+    
+    const avgSentenceLength = totalWords / sentences.length;
+    const avgSyllablesPerWord = totalSyllables / Math.max(1, totalWords);
+    
+    // Flesch Reading Ease approximation (higher = easier)
+    // FRE = 206.835 - 1.015(words/sentences) - 84.6(syllables/words)
+    // Normalize to 0-100
+    const flesch = 206.835 - 1.015 * avgSentenceLength - 84.6 * avgSyllablesPerWord;
+    const normFlesch = Math.max(0, Math.min(100, (flesch + 100) / 2)); // Normalize to 0-100
+    
+    // Sentence simplicity: penalize very long sentences
+    const normSentenceSimplicity = Math.max(0, 100 - avgSentenceLength * 3);
+    
+    // Combined clarity score
+    const clarity = 0.7 * normFlesch + 0.3 * normSentenceSimplicity;
+    return Math.max(0, Math.min(100, clarity));
+  };
+
+  // 3. Objectivity: Count uncertainty/hedge words (returns percentage 0-100)
+  const computeObjectivity = (text: string): number => {
+    if (!text || text.trim().length === 0) return 0;
+    
+    const hedgeWords = /\b(might|maybe|could|perhaps|i\s*think|seems|appears|possibly|probably|allegedly|arguing|supposedly)\b/gi;
+    const matches = text.match(hedgeWords) || [];
+    const uncertaintyCount = matches.length;
+    
+    // Each hedge word is a penalty
+    // 0 hedge words = 100 (perfect)
+    // 1 hedge word = 50
+    // 2+ hedge words = 0
+    if (uncertaintyCount === 0) return 100;
+    if (uncertaintyCount === 1) return 50;
+    return 0;
+  };
+
+  // 4. Structure/Reasoning: Detect logical flow with reasoning words (returns percentage 0-100)
+  const computeStructure = (text: string): number => {
+    if (!text || text.trim().length === 0) return 0;
+    
+    const reasoningWords = /\b(therefore|thus|conclude|in\s*conclusion|so\s*that|because|since|as\s*a\s*result|hence|consequently)\b/gi;
+    const hasReasoning = reasoningWords.test(text);
+    
+    // If reasoning words present, full score; otherwise 0
+    return hasReasoning ? 100 : 0;
   };
 
   // Enhanced scoring algorithm with more precise similarity calculation
@@ -676,248 +765,242 @@ const TakeExam = () => {
       let details = null;
 
       if (question.type === "forensic") {
-        let forensicRows = [];
-        try {
-          // Parse the answer from the question
-          const parsedAnswer = JSON.parse(question.answer || "{}");
+        // Check if student answered conclusion and explanation
+        const hasConclusion = studentConclusion && String(studentConclusion).trim().length > 0;
+        const hasExplanation = explanation && String(explanation).trim().length > 0;
 
-          // Check if the answer has the new format with specimens array
-          if (parsedAnswer.specimens && Array.isArray(parsedAnswer.specimens)) {
-            forensicRows = parsedAnswer.specimens;
-          } else if (Array.isArray(parsedAnswer)) {
-            // Fallback to the old format if the answer is directly an array
-            forensicRows = parsedAnswer;
-          }
-
-          // Final safety check - ensure forensicRows is an array
-          if (!Array.isArray(forensicRows)) {
-            forensicRows = [];
-            console.error("Forensic rows is not an array after parsing");
-          }
-        } catch (e) {
-          forensicRows = [];
-          console.error("Error parsing forensic answer:", e);
-        }
-
-        // Check if forensic rows have points (from the updated format)
-        const hasPointsPerRow =
-          forensicRows.length > 0 && "points" in forensicRows[0];
-
-        // Track scoring details for potentially showing to the student later
-        const rowDetails = [];
-        let tableScore = 0; // Score from table rows ONLY
-        let totalScore = 0; // Total including explanation (for overall percentage)
-        let totalPossiblePoints = 0; // Only for table rows, NOT explanation
-        let raw_score = 0; // Count of correct rows
-        let raw_total = 0; // Total number of rows
-
-        // Get explanation points from parsed answer if available
-        let explanationPoints = 0;
-        let explanationScore = 0; // Will be calculated separately
-        try {
-          const parsedAnswer = JSON.parse(question.answer || "{}");
-          if (
-            parsedAnswer.explanation &&
-            typeof parsedAnswer.explanation.points === "number"
-          ) {
-            explanationPoints = parsedAnswer.explanation.points;
-          }
-        } catch (e) {
-          console.error("Error extracting explanation points:", e);
-        }
-
-        // Process each row in the forensic table - safe iteration with Array.isArray check
-        if (Array.isArray(forensicRows)) {
-          forensicRows.forEach((row: any, rowIdx: number) => {
-            raw_total++; // Increment total row count
-            
-            // Get row points - check if this specific row has points, not just the first row
-            const rowPoints = "points" in row ? Number(row.points) || 1 : 1;
-            const pointType = row.pointType || "both"; // Default to "both" for backward compatibility
-
-            // Get the columns to check (excluding points and pointType which are metadata)
-            const columns = Object.keys(row).filter((col) => !["points", "pointType"].includes(col));
-            
-            // Calculate possible points for this row based on point type
-            let possiblePointsForRow = rowPoints;
-            if (pointType === "each") {
-              // If "each", points can be earned per correct column
-              possiblePointsForRow = rowPoints * columns.length;
-            }
-            totalPossiblePoints += possiblePointsForRow;
-
-            const rowResult = {
-              rowIndex: rowIdx,
-              questionSpecimen: row.questionSpecimen,
-              standardSpecimen: row.standardSpecimen,
-              userValue: answer[rowIdx] || {},
-              correct: false,
-              points: 0,
-              possiblePoints: possiblePointsForRow,
-              pointsValue: rowPoints, // Store the actual points set for this row
-              pointType: pointType, // Store the point type ("both" or "each")
-              columnScores: {},
-            };
-
-            // Check if this row's answer is correct by evaluating each column
-            if (answer[rowIdx]) {
-              let allCorrect = true;
-              let correctColumnCount = 0;
-
-              // Check each column for exact match
-              columns.forEach((col) => {
-                const userValue = (answer[rowIdx][col] || "")
-                  .trim()
-                  .toLowerCase();
-                const correctValue = (row[col] || "").trim().toLowerCase();
-
-                // Skip empty columns in the correct answer (they're not required)
-                if (!correctValue) return;
-
-                const isExactMatch = userValue === correctValue;
-
-                // Store exact match result for this column
-                rowResult.columnScores[col] = {
-                  isExactMatch,
-                  userValue,
-                  correctValue,
-                };
-
-                if (isExactMatch) {
-                  correctColumnCount++;
-                } else {
-                  allCorrect = false;
-                }
-              });
-
-              // Award points based on point type
-              if (pointType === "both") {
-                // Award full points only if all columns are exactly correct
-                if (allCorrect) {
-                  rowResult.correct = true;
-                  rowResult.points = rowPoints;
-                  tableScore += rowPoints;
-                  totalScore += rowPoints;
-                  raw_score++; // Increment correct row count
-                }
-              } else if (pointType === "each") {
-                // Award points for each correct column
-                rowResult.points = correctColumnCount * rowPoints;
-                if (rowResult.points > 0) {
-                  tableScore += rowResult.points;
-                  totalScore += rowResult.points;
-                }
-                rowResult.correct = allCorrect; // Mark correct only if all correct
-                if (allCorrect) {
-                  raw_score++; // Increment correct row count only if all columns correct
-                }
-              }
-            }
-
-            rowDetails.push(rowResult);
+        // If no conclusion or no explanation, score = 0
+        if (!hasConclusion || !hasExplanation) {
+          score = 0;
+          details = {
+            rowDetails: [],
+            totalScore: 0,
+            raw_score: 0,
+            raw_total: 0,
+            explanation: explanation.trim(),
+            teacherExplanation: '',
+            assessmentMethod: "New Rubric-based scoring (Findings Similarity, Clarity, Objectivity, Structure/Reasoning)",
+            scoringNote: "Zero score: Must provide both conclusion and explanation",
+          };
+          answerToSave = JSON.stringify({
+            tableAnswers: answer,
+            explanation: explanation.trim(),
+            conclusion: studentConclusion,
           });
-        }
-
-        // Add points for explanation if provided
-        let explanationDetails = null;
-        if (explanationPoints > 0) {
-          // Get the expected conclusion from the question
+        } else {
+          // Get teacher findings from question data
+          let teacherFindings = '';
+          let expectedConclusion = '';
           try {
-            const parsedAnswer = JSON.parse(question.answer || "{}");
-            const expectedConclusion = parsedAnswer.explanation?.conclusion || "";
-
-            if (expectedConclusion && studentConclusion) {
-              // Check if student's conclusion matches the expected conclusion
-              const conclusionMatched = studentConclusion === expectedConclusion;
-
-              // Award points based on conclusion match
-              if (conclusionMatched) {
-                // Award full points if conclusion matches
-                explanationScore = explanationPoints;
-              } else {
-                // No points for wrong conclusion
-                explanationScore = 0;
+            if (question.explanation && String(question.explanation).trim()) {
+              teacherFindings = question.explanation;
+            } else if (question.answer) {
+              const parsed = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
+              if (parsed && parsed.explanation) {
+                if (typeof parsed.explanation === 'string') teacherFindings = parsed.explanation;
+                else if (parsed.explanation.text) teacherFindings = parsed.explanation.text;
+                // Also extract expected conclusion
+                if (parsed.explanation && parsed.explanation.conclusion) expectedConclusion = parsed.explanation.conclusion;
               }
-
-              explanationDetails = {
-                expectedConclusion,
-                studentConclusion,
-                conclusionMatched,
-                studentText: explanation.trim(),
-                maxPoints: explanationPoints,
-                earnedPoints: explanationScore,
-                scoringNote: "Points awarded based on whether specimen is written by the same person"
-              };
-            } else if (studentConclusion) {
-              // If no expected conclusion specified, award full points for any selection
-              explanationScore = explanationPoints;
-
-              explanationDetails = {
-                expectedConclusion: "No specific conclusion required",
-                studentConclusion,
-                conclusionMatched: true,
-                studentText: explanation.trim(),
-                maxPoints: explanationPoints,
-                earnedPoints: explanationScore,
-                scoringNote: "Points awarded for providing a conclusion"
-              };
-            } else {
-              // No conclusion selected, no points
-              explanationScore = 0;
-
-              explanationDetails = {
-                expectedConclusion: expectedConclusion || "Conclusion required",
-                studentConclusion: "No conclusion selected",
-                conclusionMatched: false,
-                studentText: explanation.trim(),
-                maxPoints: explanationPoints,
-                earnedPoints: 0,
-                scoringNote: "No points - conclusion not selected"
-              };
             }
           } catch (e) {
-            console.error("Error evaluating explanation conclusion:", e);
-            // Fallback: award points if student provided a conclusion
-            if (studentConclusion) {
-              explanationScore = explanationPoints;
+            console.error('Error extracting teacher findings:', e);
+          }
+
+          // If expectedConclusion not found yet, try to extract from question.explanation field
+          if (!expectedConclusion) {
+            try {
+              const parsedE = typeof question.explanation === 'string' ? JSON.parse(question.explanation) : question.explanation;
+              if (parsedE && parsedE.conclusion) expectedConclusion = parsedE.conclusion;
+            } catch (e) {
+              // ignore
             }
           }
 
-          totalScore += explanationScore;
-        }
+          // ======== NEW RUBRIC SCORING ========
+          // Rubric weights (must add up to 100)
+          // Findings Similarity is split: 50% conclusion + 30% text similarity
+          const findingsSimilarityWeight = (rubrics && typeof rubrics.findingsSimilarity === 'number') ? Number(rubrics.findingsSimilarity) : 80; // 50 + 30
+          const clarityWeight = (rubrics && typeof rubrics.clarity === 'number') ? Number(rubrics.clarity) : 5;
+          const objectivityWeight = (rubrics && typeof rubrics.objectivity === 'number') ? Number(rubrics.objectivity) : 5;
+          const structureWeight = (rubrics && typeof rubrics.structure === 'number') ? Number(rubrics.structure) : 10;
 
-        // Determine teacherFindings BEFORE creating details object
-        let teacherFindingsForDetails = '';
-        try {
-          if (question.explanation && String(question.explanation).trim()) {
-            teacherFindingsForDetails = question.explanation;
-          } else if (question.answer) {
-            const parsed = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
-            if (parsed && parsed.explanation) {
-              if (typeof parsed.explanation === 'string') teacherFindingsForDetails = parsed.explanation;
-              else if (parsed.explanation.text) teacherFindingsForDetails = parsed.explanation.text;
-            } else {
-              teacherFindingsForDetails = question.answer;
+          // Conclusion check (50% of findings similarity) - compare against expectedConclusion, not teacherFindings
+          const conclusionMatches = studentConclusion && expectedConclusion ? 
+            String(studentConclusion).trim().toLowerCase() === String(expectedConclusion).trim().toLowerCase() : false;
+          const conclusionScore = conclusionMatches ? 100 : 0; // percentage 0-100
+
+          // Text similarity (30% of findings similarity)
+          const textSimilarityScore = computeFindingsSimilarity(explanation, teacherFindings); // percentage 0-100
+
+          // Combined findings similarity: 50% conclusion + 30% text = overall findings % (scaled to 80%)
+          const findingsSimilarityScore = (conclusionScore * 0.5) + (textSimilarityScore * 0.3); // percentage 0-100
+
+          // Compute other rubric components (all return percentages 0-100)
+          const clarityScore = computeClarity(explanation); // percentage 0-100
+          const objectivityScore = computeObjectivity(explanation); // percentage 0-100
+          const structureScore = computeStructure(explanation); // percentage 0-100
+
+          // Weight all components consistently: (component% / 100) * weight
+          const weightedFindingsSimilarity = (findingsSimilarityScore / 100) * findingsSimilarityWeight;
+          const weightedClarity = (clarityScore / 100) * clarityWeight;
+          const weightedObjectivity = (objectivityScore / 100) * objectivityWeight;
+          const weightedStructure = (structureScore / 100) * structureWeight;
+
+          score = Math.round(weightedFindingsSimilarity + weightedClarity + weightedObjectivity + weightedStructure);
+          score = Math.max(0, Math.min(100, score)); // Clamp 0-100
+
+          // Prepare forensic rows for details
+          let forensicRows = [];
+          try {
+            const parsedAnswer = JSON.parse(question.answer || "{}");
+            if (parsedAnswer.specimens && Array.isArray(parsedAnswer.specimens)) {
+              forensicRows = parsedAnswer.specimens;
+            } else if (Array.isArray(parsedAnswer)) {
+              forensicRows = parsedAnswer;
             }
+            if (!Array.isArray(forensicRows)) {
+              forensicRows = [];
+            }
+          } catch (e) {
+            forensicRows = [];
           }
-        } catch (e) {
-          teacherFindingsForDetails = question.answer || '';
-        }
 
-        score = Math.round(totalScore); // Ensure score is an integer
-        details = {
-          rowDetails,
-          totalScore: tableScore, // Use tableScore (without explanation) for table-specific scoring
-          totalPossiblePoints,
-          raw_score,
-          raw_total,
-          explanation: explanation.trim(),
-          teacherExplanation: teacherFindingsForDetails,
-          explanationScore,
-          explanationPoints,
-          explanationDetails,
-          assessmentMethod: "Exact matching with same person determination",
-        };
+          // Track scoring details
+          const rowDetails = [];
+          let raw_score = 0;
+          let raw_total = forensicRows.length;
+
+          if (Array.isArray(forensicRows)) {
+            let earnedFromRows = 0;
+            let totalPossibleFromRows = 0;
+            forensicRows.forEach((row: any, rowIdx: number) => {
+              const columns = Object.keys(row).filter((col) => !["points", "pointType"].includes(col));
+              const rowResult: any = {
+                rowIndex: rowIdx,
+                questionSpecimen: row.questionSpecimen,
+                standardSpecimen: row.standardSpecimen,
+                userValue: answer?.[rowIdx] || {},
+                correct: false,
+                columnScores: {},
+              };
+
+              const rowPoints = Number(row.points || 1);
+              const pointType = row.pointType || 'both';
+
+              // Calculate total possible for this row
+              if (pointType === 'each') {
+                totalPossibleFromRows += rowPoints * Math.max(1, columns.length);
+              } else {
+                totalPossibleFromRows += rowPoints;
+              }
+
+              if (answer?.[rowIdx]) {
+                let allCorrect = true;
+                let correctColumns = 0;
+                columns.forEach((col) => {
+                  const userValue = (answer[rowIdx][col] || "").trim().toLowerCase();
+                  const correctValue = (row[col] || "").trim().toLowerCase();
+                  if (!correctValue) return;
+
+                  const isExactMatch = userValue === correctValue;
+                  rowResult.columnScores[col] = {
+                    isExactMatch,
+                    userValue,
+                    correctValue,
+                  };
+
+                  if (isExactMatch) correctColumns++;
+                  if (!isExactMatch) allCorrect = false;
+                });
+
+                // Award points according to pointType
+                if (pointType === 'each') {
+                  earnedFromRows += rowPoints * correctColumns;
+                } else {
+                  if (allCorrect && columns.length > 0) {
+                    earnedFromRows += rowPoints;
+                    rowResult.correct = true;
+                  }
+                }
+              }
+
+              rowDetails.push(rowResult);
+            });
+
+            // Explanation/conclusion points configured on the question
+            const explanationPointsTotal = Number(question.explanation_points ?? question.explanationPoints ?? 0);
+
+            // Determine expected conclusion from question.answer or question.explanation
+            let expectedConclusion = '';
+            try {
+              const parsedQA = typeof question.answer === 'string' ? JSON.parse(question.answer) : question.answer;
+              if (parsedQA && parsedQA.explanation && parsedQA.explanation.conclusion) expectedConclusion = parsedQA.explanation.conclusion;
+              else if (question.explanation && typeof question.explanation === 'object' && question.explanation.conclusion) expectedConclusion = question.explanation.conclusion;
+              else if (question.explanation && typeof question.explanation === 'string') {
+                try {
+                  const parsedE = JSON.parse(question.explanation);
+                  if (parsedE && parsedE.conclusion) expectedConclusion = parsedE.conclusion;
+                } catch { }
+              }
+            } catch (e) { }
+
+            const studentConclusionNormalized = (String(studentConclusion || '').trim()).toLowerCase();
+            const expectedConclusionNormalized = (String(expectedConclusion || '').trim()).toLowerCase();
+            const conclusionIsCorrect = expectedConclusion && studentConclusionNormalized && expectedConclusionNormalized === studentConclusionNormalized;
+
+            const explanationAwarded = conclusionIsCorrect ? explanationPointsTotal : 0;
+
+            const totalPossiblePoints = totalPossibleFromRows + explanationPointsTotal;
+            const earnedPoints = earnedFromRows + explanationAwarded;
+
+            details = {
+              rowDetails,
+              totalScore: earnedPoints,
+              totalPossiblePoints,
+              raw_score: earnedFromRows,
+              raw_total: totalPossibleFromRows,
+              explanation: explanation.trim(),
+              teacherExplanation: teacherFindings,
+              explanationPoints: explanationPointsTotal,
+              explanationAwarded,
+              explanationDetails: {
+                expectedConclusion: expectedConclusion || '',
+                studentText: explanation.trim(),
+                studentConclusion,
+                conclusionMatched: conclusionIsCorrect,
+              },
+              rubricBreakdown: {
+                completeness: {
+                  label: "Completeness (50% conclusion correctness + 50% keyword/concept matching)",
+                  weight: 70,
+                  earned: Math.round(findingsSimilarityScore),
+                  weighted: Math.round(weightedFindingsSimilarity),
+                },
+                objectivity: {
+                  label: "Objectivity (how objective (non‑opinionated) the language is)",
+                  weight: 15,
+                  earned: Math.round(objectivityScore),
+                  weighted: Math.round(weightedObjectivity),
+                },
+                structure: {
+                  label: "Structure / Reasoning (does the answer show evidence)",
+                  weight: 15,
+                  earned: Math.round(structureScore),
+                  weighted: Math.round(weightedStructure),
+                },
+              },
+              assessmentMethod: "New Rubric-based scoring: Completeness (70%) + Objectivity (15%) + Structure/Reasoning (15%)",
+            };
+
+            // Ensure answerToSave contains table answers, explanation, and conclusion
+            answerToSave = JSON.stringify({
+              tableAnswers: answer,
+              explanation: explanation.trim(),
+              conclusion: studentConclusion,
+            });
+          }
+        }
 
         // Save both the table answers and the explanation
         answerToSave = JSON.stringify({
@@ -976,10 +1059,13 @@ const TakeExam = () => {
         // For forensic exams, question.answer is JSON, extract the expected conclusion
         try {
           const parsed = JSON.parse(question.answer);
-          if (parsed.explanation?.conclusion) {
-            teacherFindingsForPayload = parsed.explanation.conclusion;
+          // Prefer explanation.text, then explanation string, then fallback to conclusion
+          if (parsed.explanation?.text) {
+            teacherFindingsForPayload = parsed.explanation.text;
           } else if (typeof parsed.explanation === 'string') {
             teacherFindingsForPayload = parsed.explanation;
+          } else if (parsed.explanation?.conclusion) {
+            teacherFindingsForPayload = parsed.explanation.conclusion;
           } else {
             teacherFindingsForPayload = question.answer;
           }
@@ -998,8 +1084,10 @@ const TakeExam = () => {
           const parsed = JSON.parse(answerToSave);
           // For forensic exams, findings are the explanation/analysis (not the conclusion)
           if (parsed.explanation) {
-            // Forensic exams have explanation as findings
-            studentFindingsForPayload = parsed.explanation;
+            // If explanation is an object with `text`, prefer that
+            if (typeof parsed.explanation === 'string') studentFindingsForPayload = parsed.explanation;
+            else if (parsed.explanation?.text) studentFindingsForPayload = parsed.explanation.text;
+            else studentFindingsForPayload = String(parsed.explanation);
           } else if (parsed.answer) {
             // For text answers
             studentFindingsForPayload = parsed.answer;
@@ -1100,42 +1188,37 @@ const TakeExam = () => {
       }
     }, [handleSubmit]);
 
+  // Memoize forensicRows and columns so they don't recreate on every render
+  // This prevents the table inputs from losing focus when you type
+  // IMPORTANT: This must be placed BEFORE any early returns to satisfy React hook rules
+  const { forensicRows, columns } = useMemo(() => {
+    let rows = [];
+    if (!question) return { forensicRows: [], columns: [] };
+    try {
+      const parsedAnswer = JSON.parse(question.answer || "{}");
+      if (parsedAnswer.specimens && Array.isArray(parsedAnswer.specimens)) {
+        rows = parsedAnswer.specimens;
+      } else if (Array.isArray(parsedAnswer)) {
+        rows = parsedAnswer;
+      }
+      if (!Array.isArray(rows)) {
+        console.error("forensicRows is not an array after parsing, resetting to empty array");
+        rows = [];
+      }
+    } catch (error) {
+      console.error("Error parsing forensic answer:", error);
+      rows = [];
+    }
+    const cols = rows.length > 0 ? Object.keys(rows[0]).filter((col) => !["points", "pointType"].includes(col)) : [];
+    return { forensicRows: rows, columns: cols };
+  }, [question?.answer]);
+
   // Leave exam functionality removed for exam integrity
 
   if (!exam || !question) return <Loading fullScreen message="Loading exam..." />;
 
   // Render answer input based on question type
   let answerInput = null;
-
-  // For forensic document questions
-  let forensicRows = [];
-  try {
-    const parsedAnswer = JSON.parse(question.answer || "{}");
-    // Check if the answer has the new format with specimens array
-    if (parsedAnswer.specimens && Array.isArray(parsedAnswer.specimens)) {
-      forensicRows = parsedAnswer.specimens;
-    } else if (Array.isArray(parsedAnswer)) {
-      // Fallback to the old format if needed
-      forensicRows = parsedAnswer;
-    }
-
-    // Final safety check - ensure forensicRows is an array
-    if (!Array.isArray(forensicRows)) {
-      console.error(
-        "forensicRows is not an array after parsing, resetting to empty array"
-      );
-      forensicRows = [];
-    }
-  } catch (error) {
-    console.error("Error parsing forensic answer:", error);
-    forensicRows = [];
-  }
-
-  // Get the columns from the first row (excluding points and pointType which are metadata)
-  const columns =
-    forensicRows.length > 0
-      ? Object.keys(forensicRows[0]).filter((col) => !["points", "pointType"].includes(col))
-      : [];
 
   // Split the stored image string into question vs standard images.
   // Convention: AddQuestionDialog saves [standard..., question...] with counts in metadata
@@ -1271,29 +1354,38 @@ const TakeExam = () => {
           </thead>
           <tbody>
             {forensicRows.map((row: any, rowIdx: number) => (
-              <tr key={rowIdx}>
+              <tr key={`row-${rowIdx}`}>
                 <td className="border p-1 text-center font-medium bg-gray-50">
                   {rowIdx + 1}
                 </td>
-                {columns.map((col, colIdx) => (
-                  <td key={colIdx} className="border p-1">
-                    <input
-                      className="w-full px-2 py-1 text-sm"
-                      value={answer[rowIdx]?.[col] || ""}
-                      onChange={(e) => {
-                        const arr = Array.isArray(answer)
-                          ? [...answer]
-                          : Array(forensicRows.length).fill({});
-                        arr[rowIdx] = {
-                          ...arr[rowIdx],
-                          [col]: e.target.value,
-                        };
-                        setAnswer(arr);
-                      }}
-                      placeholder={`Enter ${col}`}
-                    />
-                  </td>
-                ))}
+                {columns.map((col, colIdx) => {
+                  const inputKey = `input-${rowIdx}-${col}`;
+                  const cellValue = answer?.[rowIdx]?.[col];
+                  const displayValue = cellValue !== undefined && cellValue !== null ? String(cellValue) : "";
+                  return (
+                    <td key={`cell-${rowIdx}-${colIdx}`} className="border p-1">
+                      <input
+                        className="w-full px-2 py-1 text-sm"
+                        type="text"
+                        value={displayValue}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          // Ensure answer is initialized as an array
+                          let arr = Array.isArray(answer) ? [...answer] : Array.from({ length: forensicRows.length }, () => ({}));
+                          // Ensure the row object exists
+                          if (!arr[rowIdx] || typeof arr[rowIdx] !== 'object') {
+                            arr[rowIdx] = {};
+                          }
+                          // Set the column value
+                          arr[rowIdx][col] = val;
+                          // Update state
+                          setAnswer(arr);
+                        }}
+                        placeholder={`Enter ${col}`}
+                      />
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -1353,20 +1445,24 @@ const TakeExam = () => {
               <div className="font-semibold mb-3 text-amber-900 flex items-center gap-2">🏆 Grading Rubric Weights</div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
-                  <div className="text-sm font-semibold text-slate-900">Accuracy</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.accuracy}%</div>
+                  <div className="text-sm font-semibold text-slate-900">Findings Similarity</div>
+                  <div className="text-xs text-muted-foreground">(50% conclusion + 30% text)</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.findingsSimilarity ?? rubrics.accuracy ?? 80}%</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
-                  <div className="text-sm font-semibold text-slate-900">Completeness</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.completeness}%</div>
+                  <div className="text-sm font-semibold text-slate-900">Structure / Reasoning</div>
+                  <div className="text-xs text-muted-foreground">(does the answer show evidence)</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.structure ?? rubrics.completeness ?? 10}%</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
                   <div className="text-sm font-semibold text-slate-900">Clarity</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.clarity}%</div>
+                  <div className="text-xs text-muted-foreground">(readability)</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.clarity ?? 5}%</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
                   <div className="text-sm font-semibold text-slate-900">Objectivity</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.objectivity}%</div>
+                  <div className="text-xs text-muted-foreground">(non-opinionated)</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.objectivity ?? 5}%</div>
                 </div>
               </div>
             </div>
@@ -1405,7 +1501,7 @@ const TakeExam = () => {
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs text-blue-900">
-                  <strong>⚠️ Required:</strong> Select whether you believe the specimen is fake or real based on your forensic analysis.
+                  <strong>⚠️ Required:</strong> Select whether you believe the specimen WRITTEN OR NOT WRITTEN by the same person based on your forensic analysis.
                   This conclusion directly impacts your exam score.
                 </p>
               </div>
@@ -1415,7 +1511,7 @@ const TakeExam = () => {
           {/* Explanation field */}
           <div className="space-y-3 mt-6 border-t pt-6">
             <label htmlFor="explanation" className="block text-base font-bold text-slate-900">
-              📋 Additional Findings
+              📋 Findings 
             </label>
             <textarea
               id="explanation"
@@ -1423,11 +1519,10 @@ const TakeExam = () => {
               className="w-full px-4 py-3 border-2 border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
               placeholder="Provide any additional explanation for your answers and forensic observations..."
               value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
+              onChange={(e) => setExplanation(e.target.value.toUpperCase())}
             ></textarea>
             <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-3">
-              <strong>ℹ️ Note:</strong> This explanation will be reviewed by your instructor.
-              Your grade is based on the table answers, forensic conclusion, and this explanation.
+              
             </p>
           </div>
 

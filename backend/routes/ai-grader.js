@@ -113,7 +113,33 @@ router.get('/result/:studentId/:examId', async (req, res) => {
     }
 
     console.log('[AI-GRADER][RESULT] Grade found:', result[0]);
-    res.json(result[0]);
+    
+    // Map database field names to rubric component names for frontend compatibility
+    const mapped = {
+      score: result[0].score,
+      overall: result[0].score,
+      findingsSimilarity: result[0].accuracy,
+      clarity: result[0].clarity,
+      objectivity: result[0].objectivity,
+      structure: result[0].completeness,
+      feedback: result[0].feedback,
+      created_at: result[0].created_at,
+      // Also include legacy field names for backwards compatibility
+      accuracy: result[0].accuracy,
+      completeness: result[0].completeness
+    };
+    // New rubric mapping: accuracy->accuracy (Accuracy), completeness->structure (Structure/Reasoning), clarity->objectivity (Objectivity)
+    const newMapped = {
+      score: result[0].score,
+      overall: result[0].score,
+      accuracy: result[0].accuracy,      // Accuracy component
+      objectivity: result[0].clarity,    // Objectivity component
+      structure: result[0].completeness, // Structure/Reasoning component
+      feedback: result[0].feedback,
+      created_at: result[0].created_at
+    };
+    
+    res.json(newMapped);
   } catch (err) {
     console.error('[AI-GRADER][RESULT] Error:', err.message);
     res.status(500).json({ error: err.message });

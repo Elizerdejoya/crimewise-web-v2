@@ -272,7 +272,7 @@ const QuestionBank = () => {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="content">Question Content</Label>
+                  <Label htmlFor="content">Instructions</Label>
                   <Textarea
                     id="content"
                     value={newQuestion.content}
