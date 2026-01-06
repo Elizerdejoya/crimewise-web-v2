@@ -273,7 +273,7 @@ const TakeExam = () => {
 
 
 
-  // Fullscreen enforcement
+  // Fullscreen enforcement: try to re-enter immediately; if blocked, show prompt
   useEffect(() => {
     const requestFullscreen = tryRequestFullscreen;
 
@@ -285,42 +285,23 @@ const TakeExam = () => {
           // Do not re-request fullscreen in this case.
           return;
         }
-        // Clear any existing countdown
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-        // Start a 3-second countdown before re-requesting fullscreen
-        let countdown = 3;
-        setFullscreenCountdown(countdown);
-        toast({
-          title: "⚠️ Fullscreen Exited",
-          description: `Returning to fullscreen in ${countdown}...`,
-          variant: "destructive",
-          duration: 5000,
-        });
-        countdownIntervalRef.current = setInterval(async () => {
-          countdown--;
-          setFullscreenCountdown(countdown);
-          if (countdown <= 0) {
-            clearInterval(countdownIntervalRef.current!);
-            countdownIntervalRef.current = null;
-            const ok = await requestFullscreen();
-            if (!ok) {
-              // Browser blocked automatic request; show a prompt for user to click
-              setShowFullscreenPrompt(true);
-            }
+        // Try to immediately re-request fullscreen; if blocked, show prompt
+        requestFullscreen().then((ok) => {
+          if (!ok) {
+            setShowFullscreenPrompt(true);
           }
-        }, 1000);
+        });
       }
     };
 
+    // Attempt fullscreen on mount
     requestFullscreen();
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
       }
     };
   }, [toast]);
@@ -1397,12 +1378,7 @@ const TakeExam = () => {
                 ⚠️ {tabSwitchCount} tab switch{tabSwitchCount > 1 ? "es" : ""}
               </span>
             )}
-            {!isFullscreen && fullscreenCountdown > 0 && (
-              <span className="px-3 py-1 bg-red-600 border border-red-700 text-white rounded-full text-xs font-bold animate-pulse">
-                🔄 Returning to fullscreen: {fullscreenCountdown}s
-              </span>
-            )}
-            {!isFullscreen && fullscreenCountdown === 0 && (
+            {!isFullscreen && (
               <span className="px-3 py-1 bg-yellow-50 border border-yellow-200 text-yellow-700 rounded-full text-xs font-medium animate-pulse">
                 ⚠️ Fullscreen required
               </span>
@@ -1556,29 +1532,19 @@ const TakeExam = () => {
           <div className="bg-white rounded-lg p-6 max-w-md w-full text-center">
             <h3 className="text-xl font-bold mb-3">Fullscreen Required</h3>
             <p className="text-sm text-slate-700 mb-4">The browser blocked automatic fullscreen re-entry. Please click the button below to return to fullscreen.</p>
-            <div className="flex gap-3 justify-center">
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded"
-                onClick={async () => {
-                  const ok = await tryRequestFullscreen();
-                  if (ok) {
-                    setShowFullscreenPrompt(false);
-                    setFullscreenCountdown(0);
-                  }
-                }}
-              >
-                Return to fullscreen
-              </button>
-              <button
-                className="bg-gray-200 text-slate-800 px-4 py-2 rounded"
-                onClick={() => {
-                  setShowFullscreenPrompt(false);
-                  // Allow user to choose to submit instead
-                }}
-              >
-                Continue without fullscreen
-              </button>
-            </div>
+              <div className="flex gap-3 justify-center">
+                <button
+                  className="bg-blue-600 text-white px-4 py-2 rounded"
+                  onClick={async () => {
+                    const ok = await tryRequestFullscreen();
+                    if (ok) {
+                      setShowFullscreenPrompt(false);
+                    }
+                  }}
+                >
+                  Return to fullscreen
+                </button>
+              </div>
             <div className="mt-4 text-xs text-slate-500">If you continue without fullscreen your exam may be flagged.</div>
           </div>
         </div>

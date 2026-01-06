@@ -185,7 +185,7 @@ const Results = () => {
   };
 
   // Default rubric weights used for fallback distribution when component scores are missing/zero
-  // Weights as percentages: Findings Similarity 40%, Clarity 20%, Objectivity 10%, Structure/Reasoning 30%
+  // Weights as percentages: Completeness 40%, Clarity 20%, Objectivity 10%, Structure/Reasoning 30%
   const DEFAULT_RUBRIC_WEIGHTS: Record<string, number> = {
     findingsSimilarity: 40,
     clarity: 20,
@@ -194,7 +194,7 @@ const Results = () => {
   };
 
   const RUBRIC_LABELS: Record<string, string> = {
-    findingsSimilarity: "Findings Similarity (how much the student's findings text matches the teacher's findings)",
+    findingsSimilarity: "Completeness (how much the student's findings text matches the teacher's findings)",
     clarity: "Clarity (is the explanation easy to read and understand)",
     objectivity: "Objectivity (how objective (non‑opinionated) the language is)",
     structure: "Structure / Reasoning (does the answer show evidence)",
@@ -347,39 +347,44 @@ const Results = () => {
     if (aiGradeData) {
       try {
         const overall = Number(aiGradeData.score ?? aiGradeData.overall ?? NaN);
-        const keys = ['findingsSimilarity', 'clarity', 'objectivity', 'structure'];
-        // Read raw component values
-        const rawVals = keys.map(k => {
+        const dbKeys = ['accuracy', 'objectivity', 'structure'];
+        const displayKeyMap: Record<string, string> = { accuracy: 'completeness', objectivity: 'objectivity', structure: 'structure' };
+        
+        // Read raw component values (may be undefined/null/0)
+        const rawVals = dbKeys.map(k => {
           const v = aiGradeData?.[k];
           const n = v === undefined || v === null ? null : (Number.isNaN(Number(v)) ? null : Number(v));
           return n;
         });
+
         // Determine if any component has a positive real value (>0)
         const anyPositive = rawVals.some(v => v !== null && v > 0);
+
         // Prepare display values
         const displayVals: Record<string, number | null> = {
-          findingsSimilarity: null,
-          clarity: null,
+          completeness: null,
           objectivity: null,
           structure: null,
         };
 
         if (anyPositive) {
-          // Use all actual component values (including explicit 0s); do NOT derive missing/zero components
-          keys.forEach((k, i) => {
+          // Map database keys to display keys and use all actual values (including explicit 0s)
+          dbKeys.forEach((dbKey, i) => {
+            const displayKey = displayKeyMap[dbKey];
             const v = rawVals[i];
             if (v !== null) {
-              displayVals[k] = Math.max(0, Math.min(100, Math.round(v)));
+              displayVals[displayKey] = Math.max(0, Math.min(100, Math.round(v)));
             } else {
-              displayVals[k] = 0; // Treat null as 0 (no component data)
+              // null means no data, treat as 0
+              displayVals[displayKey] = 0;
             }
           });
         } else if (!Number.isNaN(overall)) {
           // No positive components present: compute all by formula S × (W / 100)
-          keys.forEach((k) => {
-            const weight = (DEFAULT_RUBRIC_WEIGHTS[k] || 0) / 100;
+          Object.keys(displayVals).forEach((displayKey) => {
+            const weight = (DEFAULT_RUBRIC_WEIGHTS[displayKey] || 0) / 100;
             const computed = Math.round(Math.round(overall) * weight);
-            displayVals[k] = Math.max(0, Math.min(100, computed));
+            displayVals[displayKey] = Math.max(0, Math.min(100, computed));
           });
         }
 
@@ -391,8 +396,7 @@ const Results = () => {
           <div style="margin: 20px 0; padding: 12px; background: #f5f5f5; border-radius: 4px;">
             <h3 style="margin: 0 0 8px 0; font-size: 14px;">Rubric Breakdown</h3>
             <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; font-size: 12px;">
-              <div><strong>Findings Similarity:</strong> ${fmtComp(displayVals.findingsSimilarity)}</div>
-              <div><strong>Clarity:</strong> ${fmtComp(displayVals.clarity)}</div>
+              <div><strong>Completeness:</strong> ${fmtComp(displayVals.completeness)}</div>
               <div><strong>Objectivity:</strong> ${fmtComp(displayVals.objectivity)}</div>
               <div><strong>Structure / Reasoning:</strong> ${fmtComp(displayVals.structure)}</div>
               <div style="grid-column: 1 / -1; margin-top: 8px;"><strong>Overall Score:</strong> ${!Number.isNaN(overall) ? `${Math.round(overall)}%` : '-'}</div>
@@ -523,8 +527,9 @@ const Results = () => {
           explanation = detailsObj.explanationDetails.studentText;
         }
         
-        if (detailsObj.explanation) {
-          expectedExplanation = detailsObj.explanation;
+        // Get expected findings from teacherExplanation (teacher's findings/explanation text)
+        if (detailsObj.teacherExplanation) {
+          expectedExplanation = detailsObj.teacherExplanation;
         }
 
         if (explanation || expectedExplanation) {
@@ -533,7 +538,7 @@ const Results = () => {
               <h3 style="font-size: 14px; margin: 0 0 8px 0;">Your Findings</h3>
               <div class="explanation-text" style="background: #f5f5f5; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 13px;">${explanation || '-'}</div>
               ${expectedExplanation ? `
-                <h3 style="font-size: 14px; margin: 12px 0 8px 0;">Expected Findings</h3>
+                <h3 style="font-size: 14px; margin: 12px 0 8px 0;">Teacher's Findings</h3>
                 <div class="expected-explanation" style="background: #e3f2fd; padding: 12px; border-radius: 4px; white-space: pre-wrap; font-size: 13px;">${expectedExplanation}</div>
               ` : ''}
             </div>
