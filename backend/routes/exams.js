@@ -490,6 +490,7 @@ router.post(
         studentFindings,
         teacherFindings,
         conclusionCorrect,
+        conclusionToggled,
       } = req.body;
 
       console.log('[EXAMS][SUBMIT] Received findings:', { 
@@ -594,13 +595,20 @@ router.post(
           // Build findings string from studentFindings (could be object or JSON string)
           let studentFindingsStr = studentFindings;
           let studentConclusion = null;
+          // Extract explicit explanation text when present (separate from tableAnswers)
+          let explanationText = '';
           try {
             if (typeof studentFindings === 'string') {
               try {
                 const parsedStudent = JSON.parse(studentFindings);
                 if (parsedStudent?.explanation) {
-                  if (typeof parsedStudent.explanation === 'string') studentFindingsStr = parsedStudent.explanation;
-                  else if (parsedStudent.explanation?.text) studentFindingsStr = parsedStudent.explanation.text;
+                  if (typeof parsedStudent.explanation === 'string') {
+                    studentFindingsStr = parsedStudent.explanation;
+                    explanationText = parsedStudent.explanation;
+                  } else if (parsedStudent.explanation?.text) {
+                    studentFindingsStr = parsedStudent.explanation.text;
+                    explanationText = parsedStudent.explanation.text;
+                  }
                   if (parsedStudent.explanation?.conclusion) studentConclusion = parsedStudent.explanation.conclusion;
                 }
               } catch (e) {
@@ -608,8 +616,13 @@ router.post(
               }
             } else if (typeof studentFindings === 'object' && studentFindings) {
               if (studentFindings.explanation) {
-                if (typeof studentFindings.explanation === 'string') studentFindingsStr = studentFindings.explanation;
-                else if (studentFindings.explanation?.text) studentFindingsStr = studentFindings.explanation.text;
+                if (typeof studentFindings.explanation === 'string') {
+                  studentFindingsStr = studentFindings.explanation;
+                  explanationText = studentFindings.explanation;
+                } else if (studentFindings.explanation?.text) {
+                  studentFindingsStr = studentFindings.explanation.text;
+                  explanationText = studentFindings.explanation.text;
+                }
                 if (studentFindings.explanation?.conclusion) studentConclusion = studentFindings.explanation.conclusion;
               } else {
                 studentFindingsStr = JSON.stringify(studentFindings);
@@ -784,7 +797,8 @@ router.post(
             const hasSubjective = subjectiveWords.some(word => lowerText.includes(word));
             return hasSubjective ? 0 : 100;
           }
-          let objectivityScore = calculateObjectivity(studentFindingsStr);
+          // Use explanationText for objectivity/structure evaluation (ignore table-only JSON)
+          let objectivityScore = calculateObjectivity(explanationText);
 
           // STRUCTURE/REASONING: Check for reasoning words
           function calculateStructure(text, conclusion) {
@@ -797,11 +811,13 @@ router.post(
               return hasReasoning ? 50 : 0;
             }
           }
-          let structureScore = calculateStructure(studentFindingsStr, conclusionCorrectLocal);
+          let structureScore = calculateStructure(explanationText, conclusionCorrectLocal);
 
           // If there is no student findings text AND no student conclusion, set all component scores to zero
-          const hasStudentFindings = (studentFindingsStr && String(studentFindingsStr).trim().length > 0);
-          const hasStudentConclusion = (studentConclusion != null && String(studentConclusion).trim().length > 0);
+          // Consider student findings present only if explicit explanation text exists (not table answers)
+          const hasStudentFindings = (explanationText && String(explanationText).trim().length > 0);
+          // Treat a toggled conclusion (UI interaction) as an explicit student conclusion even if empty
+          const hasStudentConclusion = (studentConclusion != null && String(studentConclusion).trim().length > 0) || (conclusionToggled === true);
           if (!hasStudentFindings && !hasStudentConclusion) {
             accuracyScore = 0;
             objectivityScore = 0;
@@ -824,14 +840,15 @@ router.post(
           });
 
           const aiResponse = await db.sql`
-            INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, clarity, objectivity)
-            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindingsStr}, ${overallScore}, ${Math.round(accuracyScore)}, ${Math.round(structureScore)}, ${Math.round(objectivityScore)}, ${Math.round(objectivityScore)})
+            INSERT INTO ai_findings (student_id, exam_id, result_id, student_findings, teacher_findings, score, accuracy, completeness, structure, clarity, objectivity)
+            VALUES (${student_id}, ${exam_id}, ${resultId}, ${studentFindingsStr}, ${teacherFindingsStr}, ${overallScore}, ${Math.round(accuracyScore)}, ${Math.round(accuracyScore)}, ${Math.round(structureScore)}, ${null}, ${Math.round(objectivityScore)})
             ON CONFLICT (student_id, exam_id) DO UPDATE SET
               student_findings = EXCLUDED.student_findings,
               teacher_findings = EXCLUDED.teacher_findings,
               score = EXCLUDED.score,
               accuracy = EXCLUDED.accuracy,
               completeness = EXCLUDED.completeness,
+              structure = EXCLUDED.structure,
               clarity = EXCLUDED.clarity,
               objectivity = EXCLUDED.objectivity,
               updated_at = CURRENT_TIMESTAMP

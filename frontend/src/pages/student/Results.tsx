@@ -365,20 +365,13 @@ const Results = () => {
         };
 
         if (anyPositive) {
-          // Use actual positive component values; for zero/null components derive from overall using formula
-          const knownMap: Record<string, number> = {};
+          // Use all actual component values (including explicit 0s); do NOT derive missing/zero components
           keys.forEach((k, i) => {
             const v = rawVals[i];
-            if (v !== null && v > 0) knownMap[k] = Math.round(v);
-          });
-          // Fill known values
-          Object.entries(knownMap).forEach(([k, v]) => { displayVals[k] = Math.max(0, Math.min(100, v)); });
-          // For missing keys, derive from overall using weights
-          keys.forEach((k) => {
-            if (!(k in knownMap)) {
-              const weight = (DEFAULT_RUBRIC_WEIGHTS[k] || 0) / 100;
-              const derived = Math.round(Math.round(overall) * weight);
-              displayVals[k] = Math.max(0, Math.min(100, derived));
+            if (v !== null) {
+              displayVals[k] = Math.max(0, Math.min(100, Math.round(v)));
+            } else {
+              displayVals[k] = 0; // Treat null as 0 (no component data)
             }
           });
         } else if (!Number.isNaN(overall)) {
@@ -413,7 +406,7 @@ const Results = () => {
     }
 
     // Add detailed answers for forensic questions
-    if (result.answer && result.details) {
+    if (result.answer || result.details) {
       try {
         // Parse answer
         const rawAnswer = typeof result.answer === 'string' 
@@ -959,7 +952,7 @@ const Results = () => {
                               </TableCell>
                         <TableCell className="text-center">
                           <div className="flex gap-2 justify-end">
-                            {result.answer && result.details && (
+                            {(result.answer || result.details) && (
                               <Dialog>
                                   <DialogTrigger asChild>
                                   <Button
@@ -1082,19 +1075,17 @@ const Results = () => {
                                           };
 
                                           if (anyPositive) {
-                                            // Map database keys to display keys and fill values
+                                            // Map database keys to display keys and use all actual values (including explicit 0s)
                                             dbKeys.forEach((dbKey, i) => {
                                               const displayKey = displayKeyMap[dbKey];
                                               const v = rawVals[i];
-                                              if (v !== null && v > 0) {
+                                              if (v !== null) {
                                                 displayVals[displayKey].val = Math.max(0, Math.min(100, Math.round(v)));
                                                 displayVals[displayKey].derived = false;
-                                              } else if (!Number.isNaN(overall)) {
-                                                // Derive missing from overall using weights
-                                                const weight = (DEFAULT_RUBRIC_WEIGHTS[displayKey] || 0) / 100;
-                                                const derived = Math.round(Math.round(overall) * weight);
-                                                displayVals[displayKey].val = Math.max(0, Math.min(100, derived));
-                                                displayVals[displayKey].derived = true;
+                                              } else {
+                                                // null means no data, treat as 0
+                                                displayVals[displayKey].val = 0;
+                                                displayVals[displayKey].derived = false;
                                               }
                                             });
                                           } else if (!Number.isNaN(overall)) {
@@ -1259,7 +1250,8 @@ const Results = () => {
                                         columns = [];
                                       }
 
-                                      return columns.length > 0 ? (
+                                      // Always render answer table even if explanation/conclusion are missing
+                                      return (
                                         <div className="space-y-4">
                                           <h3 className="text-lg font-medium mt-4">Answer Table</h3>
                                           <div className="overflow-x-auto border rounded-lg">
@@ -1267,78 +1259,117 @@ const Results = () => {
                                               <TableHeader>
                                                 <TableRow>
                                                   <TableHead className="min-w-[50px] sticky left-0 bg-background z-10">#</TableHead>
-                                                  {columns.map((col, idx) => (
+                                                  {columns.length > 0 ? columns.map((col, idx) => (
                                                     <TableHead key={idx} className="min-w-[120px] whitespace-nowrap">{col}</TableHead>
-                                                  ))}
+                                                  )) : (
+                                                    // If we don't have columns from details, try to derive from parsedAnswer later
+                                                    <TableHead className="min-w-[120px] whitespace-nowrap">Answer</TableHead>
+                                                  )}
                                                   <TableHead className="min-w-[100px] whitespace-nowrap">Result/Points</TableHead>
                                                   <TableHead className="min-w-[100px] whitespace-nowrap">Points Value</TableHead>
                                                   <TableHead className="min-w-[100px] whitespace-nowrap">Point Type</TableHead>
                                                 </TableRow>
                                               </TableHeader>
                                               <TableBody>
-                                                {rowDetails.map((row: any, rowIdx: number) => {
-                                                  // Use data from rowDetails
-                                                  const rowCorrectCount = (row.columnScores && Object.values(row.columnScores as any).filter((col: any) => col.isExactMatch).length) || 0;
-                                                  const rowTotalCount = columns.length;
-                                                  const allCorrectForRow = row.correct || false;
-                                                  const rowPoints = row.possiblePoints || 1;
+                                                {(() => {
+                                                  // If we have rowDetails, render them; else if parsedAnswer exists, render parsed rows; else render placeholder rows
+                                                  if (rowDetails && rowDetails.length > 0) {
+                                                    return rowDetails.map((row: any, rowIdx: number) => {
+                                                      const rowCorrectCount = (row.columnScores && Object.values(row.columnScores as any).filter((col: any) => col.isExactMatch).length) || 0;
+                                                      const rowTotalCount = columns.length || 0;
+                                                      const allCorrectForRow = row.correct || false;
+                                                      const rowPoints = row.possiblePoints || 1;
 
-                                                  return (
-                                                    <TableRow key={rowIdx}>
-                                                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{rowIdx + 1}</TableCell>
-                                                      {columns.map((col, colIdx) => {
-                                                        const colScore = row.columnScores?.[col] || {};
-                                                        const isCorrect = colScore.isExactMatch || false;
-                                                        const studentValue = colScore.userValue || '-';
-                                                        const correctValue = colScore.correctValue || '-';
+                                                      return (
+                                                        <TableRow key={rowIdx}>
+                                                          <TableCell className="sticky left-0 bg-background z-10 font-medium">{rowIdx + 1}</TableCell>
+                                                          { (columns.length > 0 ? columns : Object.keys(row.columnScores || {})).map((col: string, colIdx: number) => {
+                                                            const colScore = row.columnScores?.[col] || {};
+                                                            const isCorrect = colScore.isExactMatch || false;
+                                                            const studentValue = colScore.userValue || '-';
+                                                            const correctValue = colScore.correctValue || '-';
 
-                                                        return (
-                                                          <TableCell key={colIdx} className={`min-w-[120px] ${isCorrect ? "bg-green-50" : "bg-red-50"}`}>
+                                                            return (
+                                                              <TableCell key={colIdx} className={`min-w-[120px] ${isCorrect ? "bg-green-50" : "bg-red-50"}`}>
+                                                                <div className="flex flex-col space-y-1">
+                                                                  <div className="flex items-center flex-wrap">
+                                                                    <span className={`text-sm font-medium break-words ${isCorrect ? "text-green-600" : "text-red-600"}`}>
+                                                                      {studentValue}
+                                                                    </span>
+                                                                    <span className={`ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full flex-shrink-0 ${isCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
+                                                                      {isCorrect ? (
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                        </svg>
+                                                                      ) : (
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                                                                        </svg>
+                                                                      )}
+                                                                    </span>
+                                                                  </div>
+                                                                  {!isCorrect && (
+                                                                    <span className="text-xs text-muted-foreground break-words">
+                                                                      Correct: {correctValue}
+                                                                    </span>
+                                                                  )}
+                                                                </div>
+                                                              </TableCell>
+                                                            );
+                                                          })}
+                                                          <TableCell className="min-w-[100px]">
                                                             <div className="flex flex-col space-y-1">
-                                                              <div className="flex items-center flex-wrap">
-                                                                <span className={`text-sm font-medium break-words ${isCorrect ? "text-green-600" : "text-red-600"}`}>
-                                                                  {studentValue}
-                                                                </span>
-                                                                <span className={`ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full flex-shrink-0 ${isCorrect ? 'bg-green-100' : 'bg-red-100'}`}>
-                                                                  {isCorrect ?
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                                    </svg>
-                                                                    :
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                                                                    </svg>
-                                                                  }
-                                                                </span>
-                                                              </div>
-                                                              {!isCorrect && (
-                                                                <span className="text-xs text-muted-foreground break-words">
-                                                                  Correct: {correctValue}
-                                                                </span>
-                                                              )}
+                                                              <span className={`text-sm font-semibold ${allCorrectForRow ? "text-green-600" : "text-red-600"}`}>
+                                                                {rowCorrectCount}/{rowTotalCount}
+                                                              </span>
+                                                              <span className="text-xs text-muted-foreground">
+                                                                {allCorrectForRow ? `+${rowPoints} pts` : `0/${rowPoints} pts`}
+                                                              </span>
                                                             </div>
                                                           </TableCell>
-                                                        );
-                                                      })}
-                                                      <TableCell className="min-w-[100px]">
-                                                        <div className="flex flex-col space-y-1">
-                                                          <span className={`text-sm font-semibold ${allCorrectForRow ? "text-green-600" : "text-red-600"}`}>
-                                                            {rowCorrectCount}/{rowTotalCount}
-                                                          </span>
-                                                          <span className="text-xs text-muted-foreground">
-                                                            {allCorrectForRow ? `+${rowPoints} pts` : `0/${rowPoints} pts`}
-                                                          </span>
-                                                        </div>
-                                                      </TableCell>
-                                                      <TableCell className="min-w-[100px] text-center">
-                                                        <span className="text-sm font-medium">{row.pointsValue || 1}</span>
-                                                      </TableCell>
-                                                      <TableCell className="min-w-[100px] text-center">
-                                                        <span className="text-sm">{row.pointType === "each" ? "for each correct" : "if both correct"}</span>
-                                                      </TableCell>
+                                                          <TableCell className="min-w-[100px] text-center">
+                                                            <span className="text-sm font-medium">{row.pointsValue || 1}</span>
+                                                          </TableCell>
+                                                          <TableCell className="min-w-[100px] text-center">
+                                                            <span className="text-sm">{row.pointType === "each" ? "for each correct" : "if both correct"}</span>
+                                                          </TableCell>
+                                                        </TableRow>
+                                                      );
+                                                    });
+                                                  }
+
+                                                  // If parsedAnswer exists, try to render its rows
+                                                  if (parsedAnswer && parsedAnswer.length > 0) {
+                                                    return parsedAnswer.map((prow: any, idx: number) => {
+                                                      const cols = columns.length > 0 ? columns : Object.keys(prow);
+                                                      return (
+                                                        <TableRow key={idx}>
+                                                          <TableCell className="sticky left-0 bg-background z-10 font-medium">{idx + 1}</TableCell>
+                                                          {cols.map((col: any, cidx: number) => (
+                                                            <TableCell key={cidx} className="min-w-[120px]"><span className="text-sm break-words">{prow[col] ?? '-'}</span></TableCell>
+                                                          ))}
+                                                          <TableCell className="min-w-[100px]"><span className="text-sm text-muted-foreground">-</span></TableCell>
+                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">-</span></TableCell>
+                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">-</span></TableCell>
+                                                        </TableRow>
+                                                      );
+                                                    });
+                                                  }
+
+                                                  // Fallback: render 12 empty placeholder rows so table is never empty
+                                                  const placeholderCount = 12;
+                                                  return Array.from({ length: placeholderCount }).map((_, i) => (
+                                                    <TableRow key={`ph-${i}`}>
+                                                      <TableCell className="sticky left-0 bg-background z-10 font-medium">{i + 1}</TableCell>
+                                                      {(columns.length > 0 ? columns : ['Answer', 'Standard']).map((col: any, cidx: number) => (
+                                                        <TableCell key={cidx} className="min-w-[120px]"><span className="text-sm text-muted-foreground">-</span></TableCell>
+                                                      ))}
+                                                      <TableCell className="min-w-[100px]"><span className="text-sm text-muted-foreground">0/0</span></TableCell>
+                                                      <TableCell className="min-w-[100px] text-center"><span className="text-sm">0</span></TableCell>
+                                                      <TableCell className="min-w-[100px] text-center"><span className="text-sm">-</span></TableCell>
                                                     </TableRow>
-                                                  );
-                                                })}
+                                                  ));
+                                                })()}
                                               </TableBody>
                                             </Table>
                                           </div>
@@ -1491,8 +1522,6 @@ const Results = () => {
                                             ) : null;
                                           })()}
                                         </div>
-                                      ) : (
-                                        <p className="text-center text-muted-foreground">No detailed answer data available.</p>
                                       );
                                     })()}
                                   </div>
@@ -1562,7 +1591,7 @@ const Results = () => {
                       </div>
 
                       <div className="mt-3 flex gap-2">
-                        {result.answer && result.details && (
+                        {(result.answer || result.details) && (
                           <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); const btn = triggerRefs.current[key]; if (btn) btn.click(); }}>
                             <Eye className="h-4 w-4 mr-2" /> View Details
                           </Button>

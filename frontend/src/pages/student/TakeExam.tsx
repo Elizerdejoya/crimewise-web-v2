@@ -225,6 +225,7 @@ const TakeExam = () => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [answer, setAnswer] = useState<any>(null);
   const [studentConclusion, setStudentConclusion] = useState<string>("");
+  const [conclusionToggled, setConclusionToggled] = useState<boolean>(false);
   const [explanation, setExplanation] = useState<string>("");
   const [scoringDetails, setScoringDetails] = useState<any>(null);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -460,7 +461,11 @@ const TakeExam = () => {
           }
         }
         if (parsed.explanation) setExplanation(parsed.explanation);
-        if (parsed.studentConclusion) setStudentConclusion(parsed.studentConclusion);
+        if (parsed.studentConclusion) {
+          setStudentConclusion(parsed.studentConclusion);
+          setConclusionToggled(true);
+        }
+        if (parsed.conclusionToggled) setConclusionToggled(Boolean(parsed.conclusionToggled));
       }
     } catch (e) {
       console.error('Error loading exam draft:', e);
@@ -477,6 +482,7 @@ const TakeExam = () => {
           answer,
           explanation,
           studentConclusion,
+          conclusionToggled,
           updatedAt: Date.now(),
         };
         localStorage.setItem(draftKey, JSON.stringify(payload));
@@ -486,7 +492,7 @@ const TakeExam = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [exam?.id, answer, explanation, studentConclusion]); // Dependencies for autosave logic
+  }, [exam?.id, answer, explanation, studentConclusion, conclusionToggled]); // Dependencies for autosave logic
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -769,25 +775,7 @@ const TakeExam = () => {
         const hasConclusion = studentConclusion && String(studentConclusion).trim().length > 0;
         const hasExplanation = explanation && String(explanation).trim().length > 0;
 
-        // If no conclusion or no explanation, score = 0
-        if (!hasConclusion || !hasExplanation) {
-          score = 0;
-          details = {
-            rowDetails: [],
-            totalScore: 0,
-            raw_score: 0,
-            raw_total: 0,
-            explanation: explanation.trim(),
-            teacherExplanation: '',
-            assessmentMethod: "New Rubric-based scoring (Findings Similarity, Clarity, Objectivity, Structure/Reasoning)",
-            scoringNote: "Zero score: Must provide both conclusion and explanation",
-          };
-          answerToSave = JSON.stringify({
-            tableAnswers: answer,
-            explanation: explanation.trim(),
-            conclusion: studentConclusion,
-          });
-        } else {
+        // Always compute table scoring and details even if conclusion/explanation are missing
           // Get teacher findings from question data
           let teacherFindings = '';
           let expectedConclusion = '';
@@ -1000,7 +988,6 @@ const TakeExam = () => {
               conclusion: studentConclusion,
             });
           }
-        }
 
         // Save both the table answers and the explanation
         answerToSave = JSON.stringify({
@@ -1109,7 +1096,7 @@ const TakeExam = () => {
         conclusionIsCorrect = details.explanationDetails.conclusionMatched === true;
       }
 
-      const payload = {
+        const payload = {
         student_id,
         exam_id: exam.id,
         answer: answerToSave,
@@ -1121,6 +1108,7 @@ const TakeExam = () => {
         studentFindings: studentFindingsForPayload,
         teacherFindings: teacherFindingsForPayload,
         conclusionCorrect: conclusionIsCorrect,
+        conclusionToggled: !!conclusionToggled,
       };
 
       // Submit the exam
@@ -1478,7 +1466,7 @@ const TakeExam = () => {
               <div className="flex flex-col md:flex-row gap-3">
                 <Button
                   type="button"
-                  onClick={() => setStudentConclusion("fake")}
+                  onClick={() => { setStudentConclusion("fake"); setConclusionToggled(true); }}
                   className={`flex-1 w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
                     studentConclusion === "fake"
                       ? "bg-red-600 hover:bg-red-700 text-white shadow-lg"
@@ -1489,7 +1477,7 @@ const TakeExam = () => {
                 </Button>
                 <Button
                   type="button"
-                  onClick={() => setStudentConclusion("real")}
+                  onClick={() => { setStudentConclusion("real"); setConclusionToggled(true); }}
                   className={`flex-1 w-full py-3 px-4 rounded-lg font-semibold text-base transition-all ${
                     studentConclusion === "real"
                       ? "bg-green-600 hover:bg-green-700 text-white shadow-lg"

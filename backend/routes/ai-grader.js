@@ -101,7 +101,7 @@ router.get('/result/:studentId/:examId', async (req, res) => {
     console.log('[AI-GRADER][RESULT] Fetching grade for student', studentId, 'exam', examId);
 
     const result = await db.sql`
-      SELECT score, accuracy, completeness, clarity, objectivity, feedback, created_at 
+      SELECT score, accuracy, completeness, structure, clarity, objectivity, feedback, teacher_findings, created_at 
       FROM ai_findings 
       WHERE student_id = ${studentId} AND exam_id = ${examId}
       LIMIT 1
@@ -128,17 +128,42 @@ router.get('/result/:studentId/:examId', async (req, res) => {
       accuracy: result[0].accuracy,
       completeness: result[0].completeness
     };
-    // New rubric mapping: accuracy->accuracy (Accuracy), completeness->structure (Structure/Reasoning), clarity->objectivity (Objectivity)
+    // New rubric mapping: return the DB fields the frontend expects
+    // Try to extract a teacher explanation text if teacher_findings contains JSON with an explanation
+    let teacherExplanation = null;
+    try {
+      const tf = result[0].teacher_findings;
+      if (tf) {
+        if (typeof tf === 'string') {
+          try {
+            const parsed = JSON.parse(tf);
+            if (parsed?.explanation) {
+              teacherExplanation = typeof parsed.explanation === 'string' ? parsed.explanation : (parsed.explanation.text || null);
+            }
+          } catch (e) {
+            // not JSON
+          }
+        } else if (typeof tf === 'object') {
+          if (tf.explanation) teacherExplanation = typeof tf.explanation === 'string' ? tf.explanation : (tf.explanation.text || null);
+        }
+      }
+    } catch (e) {
+      teacherExplanation = null;
+    }
+
     const newMapped = {
       score: result[0].score,
       overall: result[0].score,
-      accuracy: result[0].accuracy,      // Accuracy component
-      objectivity: result[0].clarity,    // Objectivity component
-      structure: result[0].completeness, // Structure/Reasoning component
+      accuracy: result[0].accuracy,
+      completeness: result[0].completeness,
+      structure: result[0].structure,
+      objectivity: result[0].objectivity,
       feedback: result[0].feedback,
+      teacher_findings: result[0].teacher_findings,
+      teacher_explanation: teacherExplanation,
       created_at: result[0].created_at
     };
-    
+
     res.json(newMapped);
   } catch (err) {
     console.error('[AI-GRADER][RESULT] Error:', err.message);
