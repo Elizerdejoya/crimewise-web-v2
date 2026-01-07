@@ -50,6 +50,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   const [forensicRows, setForensicRows] = useState<ForensicAnswerRow[]>([]);
   const [explanation, setExplanation] = useState("");
   const [explanationPoints, setExplanationPoints] = useState(0);
+  const [conclusion, setConclusion] = useState<string | null>(null);
   const [rubrics, setRubrics] = useState({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
   const [standardImages, setStandardImages] = useState<string[]>([]);
   const [questionImages, setQuestionImages] = useState<string[]>([]);
@@ -126,13 +127,15 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
             }));
             setForensicRows(rows.length > 0 ? rows : [{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" }]);
             
-            // Set explanation if it exists
+            // Set explanation and conclusion if they exist
             if (parsedAnswer.explanation) {
               setExplanation(parsedAnswer.explanation.text || "");
               setExplanationPoints(parsedAnswer.explanation.points || 0);
+              setConclusion(parsedAnswer.explanation.conclusion || null);
             } else {
               setExplanation("");
               setExplanationPoints(0);
+              setConclusion(null);
             }
           }
         } catch (e) {
@@ -315,7 +318,8 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
         })),
         explanation: {
           text: explanation,
-          points: Number(explanationPoints) || 0
+          points: Number(explanationPoints) || 0,
+          conclusion: conclusion
         }
       } as any;
       // Attach image metadata so TakeExam and other parts can split images
@@ -389,73 +393,77 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[625px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Question</DialogTitle>
+          <DialogTitle className="text-2xl">Edit Question</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-4">
         
           <div className="space-y-2">
-            <Label>Title</Label>
+            <Label className="text-sm font-semibold text-gray-700">Title</Label>
             <Input 
               value={editForm.title} 
-              onChange={e => handleEditChange("title", e.target.value)} 
+              onChange={e => handleEditChange("title", e.target.value)}
+              className="text-sm"
             />
           </div>
           
           <div className="space-y-2">
-            <Label>Text</Label>
+            <Label className="text-sm font-semibold text-gray-700">Question Text</Label>
             <Textarea 
               value={editForm.text} 
               onChange={e => handleEditChange("text", e.target.value)} 
               rows={5}
+              className="text-sm resize-none"
             />
           </div>
           
-          <div className="space-y-2">
-            <Label>Course</Label>
-            <Select 
-              value={String(editForm.course_id)} 
-              onValueChange={v => handleEditChange("course_id", v)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {courses.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.code ? `${c.code} - ${c.name}` : c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-2">
-            <Label>Difficulty</Label>
-            <Select 
-              value={editForm.difficulty} 
-              onValueChange={v => handleEditChange("difficulty", v)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="easy">Easy</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="hard">Hard</SelectItem>
-                <SelectItem value="expert">Expert</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="space-y-2">
-            <Label>Type</Label>
-            <Select 
-              value={editForm.type} 
-              onValueChange={v => handleEditChange("type", v)}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="forensic">Forensic Document Comparison</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Course</Label>
+              <Select 
+                value={String(editForm.course_id)} 
+                onValueChange={v => handleEditChange("course_id", v)}
+              >
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {courses.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.code ? `${c.code}` : c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Difficulty</Label>
+              <Select 
+                value={editForm.difficulty} 
+                onValueChange={v => handleEditChange("difficulty", v)}
+              >
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="easy">Easy</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="expert">Expert</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Type</Label>
+              <Select 
+                value={editForm.type} 
+                onValueChange={v => handleEditChange("type", v)}
+              >
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="forensic">Forensic Document Comparison</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           {/* Keyword Pool Selection */}
@@ -540,48 +548,49 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
           
           {/* Rubrics Editor */}
           <div className="space-y-3 border-t pt-4">
-            <Label>Rubric Weights (%)</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Completeness</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
+              <div className="text-xs font-medium text-gray-600">
+                Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5 p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
                   value={rubrics.findingsSimilarity}
                   onChange={e => setRubrics({...rubrics, findingsSimilarity: Number(e.target.value)})}
-                  placeholder="Completeness %"
+                  className="h-8 text-sm font-bold text-center"
                 />
-                <div className="text-xs text-muted-foreground">conclusion + keyword coverage</div>
+                <div className="text-xs text-blue-700">conclusion + keywords</div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Objectivity</Label>
+              <div className="space-y-1.5 p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                <Label className="text-xs font-semibold text-amber-900">Objectivity</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
                   value={rubrics.objectivity}
                   onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})}
-                  placeholder="Objectivity %"
+                  className="h-8 text-sm font-bold text-center"
                 />
-                <div className="text-xs text-muted-foreground">no subjective language</div>
+                <div className="text-xs text-amber-700">no subjective words</div>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-gray-600">Structure / Reasoning</Label>
+              <div className="space-y-1.5 p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                <Label className="text-xs font-semibold text-green-900">Structure</Label>
                 <Input
                   type="number"
                   min="0"
                   max="100"
                   value={rubrics.structure}
                   onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})}
-                  placeholder="Structure %"
+                  className="h-8 text-sm font-bold text-center"
                 />
-                <div className="text-xs text-muted-foreground">contains reasoning words</div>
+                <div className="text-xs text-green-700">reasoning words</div>
               </div>
-            </div>
-            <div className="text-xs text-gray-500 mt-2">Default: 70+15+15=100</div>
-            <div className="text-xs text-gray-500">
-              Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%
             </div>
           </div>
 
@@ -763,6 +772,33 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
               </Button>
               
               <div className="space-y-2 border-t pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="conclusion">Conclusion</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConclusion(conclusion === "fake" ? null : "fake")}
+                      className={`flex-1 px-4 py-2 rounded-md font-semibold text-sm transition-all ${
+                        conclusion === "fake"
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      Not Written by Same Person
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConclusion(conclusion === "real" ? null : "real")}
+                      className={`flex-1 px-4 py-2 rounded-md font-semibold text-sm transition-all ${
+                        conclusion === "real"
+                          ? "bg-green-500 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      Written by Same Person
+                    </button>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="explanation">Explanation</Label>
                   <div className="flex items-center gap-2">

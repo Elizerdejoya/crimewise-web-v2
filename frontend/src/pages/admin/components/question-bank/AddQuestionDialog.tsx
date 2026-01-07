@@ -773,26 +773,28 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             </Button>
           </div>
 
-          <div className="space-y-2 border-t pt-4">
-            <Label>Rubric Weights (editable)</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-sm">Completeness (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.findingsSimilarity} onChange={e => setRubrics({ ...rubrics, findingsSimilarity: Number(e.target.value) })} />
-                <div className="text-xs text-muted-foreground">conclusion + keyword coverage</div>
+          <div className="space-y-3 border-t pt-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
+              <div className="text-xs font-medium text-gray-600">Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
+                <Input type="number" min={0} max={100} value={rubrics.findingsSimilarity} onChange={e => setRubrics({ ...rubrics, findingsSimilarity: Number(e.target.value) })} className="h-8 text-sm font-bold text-center" />
+                <div className="text-xs text-blue-700">conclusion + keywords</div>
               </div>
-              <div>
-                <Label className="text-sm">Objectivity (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.objectivity} onChange={e => setRubrics({ ...rubrics, objectivity: Number(e.target.value) })} />
-                <div className="text-xs text-muted-foreground">no subjective language</div>
+              <div className="space-y-1.5 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <Label className="text-xs font-semibold text-amber-900">Objectivity</Label>
+                <Input type="number" min={0} max={100} value={rubrics.objectivity} onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})} className="h-8 text-sm font-bold text-center" />
+                <div className="text-xs text-amber-700">no subjective words</div>
               </div>
-              <div>
-                <Label className="text-sm">Structure / Reasoning (%)</Label>
-                <Input type="number" min={0} max={100} value={rubrics.structure} onChange={e => setRubrics({ ...rubrics, structure: Number(e.target.value) })} />
-                <div className="text-xs text-muted-foreground">contains reasoning words</div>
+              <div className="space-y-1.5 p-3 bg-green-50 rounded-lg border border-green-200">
+                <Label className="text-xs font-semibold text-green-900">Structure</Label>
+                <Input type="number" min={0} max={100} value={rubrics.structure} onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})} className="h-8 text-sm font-bold text-center" />
+                <div className="text-xs text-green-700">reasoning words</div>
               </div>
             </div>
-            <div className="text-sm text-muted-foreground">Sum of rubric weights should equal 100.</div>
             <div className="flex items-center justify-between">
               <Label htmlFor="explanation">Explanation/Findings</Label>
               <div className="flex items-center gap-2">

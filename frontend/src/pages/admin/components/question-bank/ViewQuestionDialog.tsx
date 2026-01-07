@@ -136,19 +136,19 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
       if (question.rubrics) {
         const parsed = typeof question.rubrics === 'string' ? JSON.parse(question.rubrics) : question.rubrics;
         return {
-          findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 40),
+          findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 70),
           clarity: Number(parsed.clarity ?? 20),
-          objectivity: Number(parsed.objectivity ?? 10),
-          structure: Number(parsed.structure ?? parsed.completeness ?? 30),
+          objectivity: Number(parsed.objectivity ?? 15),
+          structure: Number(parsed.structure ?? parsed.completeness ?? 15),
         };
       } else {
         // Default rubrics if none assigned
-        return { findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 };
+        return { findingsSimilarity: 70, clarity: 20, objectivity: 15, structure: 15 };
       }
     } catch (e) {
       console.error('Error parsing question rubrics:', e);
       // Fallback to defaults
-      return { findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 };
+      return { findingsSimilarity: 70, clarity: 20, objectivity: 15, structure: 15 };
     }
   }, [question]);
 
@@ -167,240 +167,270 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[625px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>View Question</DialogTitle>
+          <DialogTitle className="text-2xl">Question Details</DialogTitle>
         </DialogHeader>
-        <div className="space-y-2">
-          <Label>Title</Label>
-          <div className="p-2 bg-gray-50 rounded-md">{question.title}</div>
-
-          <Label>Text</Label>
-          <div className="p-2 bg-gray-50 rounded-md whitespace-pre-wrap">
-            {question.text}
+        <div className="space-y-4 py-4">
+          {/* Title Section */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-gray-700">Title</Label>
+            <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <p className="text-gray-900 font-medium">{question.title}</p>
+            </div>
           </div>
 
-          <Label>Course</Label>
-          <div className="p-2 bg-gray-50 rounded-md">{question.course}</div>
-
-          <Label>Type</Label>
-          <div className="p-2 bg-gray-50 rounded-md">
-            {question.type.charAt(0).toUpperCase() + question.type.slice(1)}{" "}
-            Question
+          {/* Question Text */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-gray-700">Question Text</Label>
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
+              {question.text}
+            </div>
           </div>
 
-          <Label>Difficulty</Label>
-          <div className="p-2 bg-gray-50 rounded-md">
-            <span
-              className={`px-2 py-1 rounded text-xs font-medium
-              ${
-                question.difficulty === "easy"
-                  ? "bg-green-100 text-green-800"
-                  : ""
-              }
-              ${
-                question.difficulty === "medium"
-                  ? "bg-blue-100 text-blue-800"
-                  : ""
-              }
-              ${
-                question.difficulty === "hard"
-                  ? "bg-orange-100 text-orange-800"
-                  : ""
-              }
-              ${
-                question.difficulty === "expert"
-                  ? "bg-red-100 text-red-800"
-                  : ""
-              }
-            `}
-            >
-              {question.difficulty.charAt(0).toUpperCase() +
-                question.difficulty.slice(1)}
-            </span>
-          </div>
-
-          <Label>Keyword Pool</Label>
-          <div className="p-2 bg-gray-50 rounded-md">
-            {question.keyword_pool_name ? (
-              <div className="space-y-2">
-                <Badge variant="secondary" className="flex items-center gap-1 w-fit">
-                  <Tags className="h-3 w-3" />
-                  {question.keyword_pool_name}
-                </Badge>
-                {question.keyword_pool_description && (
-                  <p className="text-sm text-gray-600">{question.keyword_pool_description}</p>
-                )}
-                {question.selected_keywords && (
-                  <div className="mt-2">
-                    <p className="text-sm font-medium text-gray-700 mb-1">Selected Keywords:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {(() => {
-                        try {
-                          const keywords = typeof question.selected_keywords === 'string' 
-                            ? JSON.parse(question.selected_keywords)
-                            : question.selected_keywords;
-                          return Array.isArray(keywords) ? keywords : [];
-                        } catch (e) {
-                          console.error('Error parsing selected keywords:', e);
-                          return [];
-                        }
-                      })().map((keyword: string, index: number) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {keyword}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
+          {/* Course & Difficulty */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Course</Label>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm">
+                {question.course}
               </div>
-            ) : (
-              <span className="text-gray-400 text-sm">No keyword pool assigned</span>
-            )}
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold text-gray-700">Difficulty</Label>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold
+                  ${question.difficulty === "easy" ? "bg-green-100 text-green-800" : ""}
+                  ${question.difficulty === "medium" ? "bg-blue-100 text-blue-800" : ""}
+                  ${question.difficulty === "hard" ? "bg-orange-100 text-orange-800" : ""}
+                  ${question.difficulty === "expert" ? "bg-red-100 text-red-800" : ""}
+                `}
+                >
+                  {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Keyword Pool Section */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold text-gray-700">Keyword Pool</Label>
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              {question.keyword_pool_name ? (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="bg-indigo-100 text-indigo-800 border-indigo-300">
+                      <Tags className="h-3 w-3 mr-1" />
+                      {question.keyword_pool_name}
+                    </Badge>
+                  </div>
+                  {question.keyword_pool_description && (
+                    <p className="text-sm text-gray-600">{question.keyword_pool_description}</p>
+                  )}
+                  {question.selected_keywords && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs font-semibold text-gray-700">Selected Keywords:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(() => {
+                          try {
+                            const keywords = typeof question.selected_keywords === 'string' 
+                              ? JSON.parse(question.selected_keywords)
+                              : question.selected_keywords;
+                            return Array.isArray(keywords) ? keywords : [];
+                          } catch (e) {
+                            console.error('Error parsing selected keywords:', e);
+                            return [];
+                          }
+                        })().map((keyword: string, index: number) => (
+                          <Badge key={index} variant="outline" className="bg-white text-xs border-gray-300 text-gray-700">
+                            {keyword}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <span className="text-gray-500 text-sm">No keyword pool assigned</span>
+              )}
+            </div>
           </div>
 
           {/* Display Rubrics - always show (same as TakeExam) */}
           {rubricsObj && (
-            <div className="bg-gray-50 border rounded-md p-3 text-sm">
-              <div className="font-semibold mb-1">Instructor rubric weights</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><strong>Findings Similarity</strong><div className="text-muted-foreground">{rubricsObj.findingsSimilarity}%</div></div>
-                <div><strong>Clarity</strong><div className="text-muted-foreground">{rubricsObj.clarity}%</div></div>
-                <div><strong>Objectivity</strong><div className="text-muted-foreground">{rubricsObj.objectivity}%</div></div>
-                <div><strong>Structure / Reasoning</strong><div className="text-muted-foreground">{rubricsObj.structure}%</div></div>
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
+              <div className="font-semibold text-gray-900 mb-4 text-sm">Instructor Rubric Weights</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-white border border-blue-200 rounded-lg shadow-sm">
+                  <div className="text-xs font-semibold text-blue-900">Completeness</div>
+                  <div className="text-2xl font-bold text-blue-600 my-2">{rubricsObj.findingsSimilarity}%</div>
+                  <div className="text-xs text-blue-700">conclusion + keywords</div>
+                </div>
+                <div className="p-3 bg-white border border-amber-200 rounded-lg shadow-sm">
+                  <div className="text-xs font-semibold text-amber-900">Objectivity</div>
+                  <div className="text-2xl font-bold text-amber-600 my-2">{rubricsObj.objectivity}%</div>
+                  <div className="text-xs text-amber-700">no subjective words</div>
+                </div>
+                <div className="p-3 bg-white border border-green-200 rounded-lg shadow-sm">
+                  <div className="text-xs font-semibold text-green-900">Structure</div>
+                  <div className="text-2xl font-bold text-green-600 my-2">{rubricsObj.structure}%</div>
+                  <div className="text-xs text-green-700">reasoning words</div>
+                </div>
               </div>
             </div>
           )}
 
-          {/* Display answer based on question type */}
+          {/* Answer Table */}
           {question.type === "forensic" && forensicData ? (
             <>
-              <Label>Answer Key Table</Label>
-              <div className="max-h-[300px] overflow-auto border rounded-md">
-                <table className="w-full border text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="border p-2 w-12">#</th>
-                      <th className="border p-2">Question Specimen</th>
-                      <th className="border p-2">Standard Specimen</th>
-                      <th className="border p-2 w-24">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forensicData.specimens.map((row, idx) => (
-                      <tr key={idx}>
-                        <td className="border p-2 text-center font-medium">
-                          {idx + 1}
-                        </td>
-                        <td className="border p-2">{row.questionSpecimen}</td>
-                        <td className="border p-2">{row.standardSpecimen}</td>
-                        <td className="border p-2 text-center font-medium">
-                          {row.points}
-                        </td>
+              <div className="space-y-2 border-t pt-4">
+                <Label className="text-sm font-semibold text-gray-700">Answer Key Table</Label>
+                <div className="max-h-[300px] overflow-auto border border-gray-200 rounded-lg">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="bg-gradient-to-r from-gray-100 to-gray-50 sticky top-0">
+                      <tr>
+                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">#</th>
+                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">Question Specimen</th>
+                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                        <th className="border border-gray-200 p-3 text-center font-semibold text-gray-700 w-20">Points</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {forensicData.specimens.map((row, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="border border-gray-200 p-3 text-center font-medium text-gray-700">
+                            {idx + 1}
+                          </td>
+                          <td className="border border-gray-200 p-3 text-gray-800">{row.questionSpecimen}</td>
+                          <td className="border border-gray-200 p-3 text-gray-800">{row.standardSpecimen}</td>
+                          <td className="border border-gray-200 p-3 text-center font-semibold text-gray-900">
+                            {row.points}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {forensicData.explanation &&
                 (forensicData.explanation.text ||
                   forensicData.explanation.conclusion) && (
                   <>
-                    <Label>
-                      Explanation{" "}
-                      <span className="text-sm text-muted-foreground">
-                        ({forensicData.explanation.points} points)
-                      </span>
-                    </Label>
-                    {forensicData.explanation.conclusion && (
-                      <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg mb-3 border border-blue-200">
-                        <span className="font-medium text-gray-700">Selected Conclusion: </span>
-                        <div className="flex gap-2 mt-2">
-                          <button
-                            disabled
-                            className={`px-4 py-2 rounded-md font-semibold text-sm transition-all ${
-                              forensicData.explanation.conclusion === "fake"
-                                ? "bg-red-500 text-white"
-                                : "bg-gray-200 text-gray-500"
-                            }`}
-                          >
-                            Not Written by Same Person
-                          </button>
-                          <button
-                            disabled
-                            className={`px-4 py-2 rounded-md font-semibold text-sm transition-all ${
-                              forensicData.explanation.conclusion === "real"
-                                ? "bg-green-500 text-white"
-                                : "bg-gray-200 text-gray-500"
-                            }`}
-                          >
-                            Written by Same Person
-                          </button>
+                    <div className="space-y-3 border-t pt-4">
+                      <Label className="text-sm font-semibold text-gray-700">
+                        Explanation
+                        <span className="text-xs text-gray-500 font-normal ml-2">
+                          ({forensicData.explanation.points} points)
+                        </span>
+                      </Label>
+                      
+                      {forensicData.explanation.conclusion && (
+                        <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 space-y-3">
+                          <div className="text-xs font-semibold text-indigo-900">Expected Conclusion:</div>
+                          <div className="flex gap-2">
+                            <button
+                              disabled
+                              className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm transition-all ${
+                                forensicData.explanation.conclusion === "fake"
+                                  ? "bg-red-500 text-white"
+                                  : "bg-gray-200 text-gray-500"
+                              }`}
+                            >
+                              Not Written by Same Person
+                            </button>
+                            <button
+                              disabled
+                              className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm transition-all ${
+                                forensicData.explanation.conclusion === "real"
+                                  ? "bg-green-500 text-white"
+                                  : "bg-gray-200 text-gray-500"
+                              }`}
+                            >
+                              Written by Same Person
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {forensicData.explanation.text && (
-                      <div className="p-2 bg-gray-50 rounded-md whitespace-pre-wrap">
-                        {forensicData.explanation.text}
-                      </div>
-                    )}
+                      )}
+                      
+                      {forensicData.explanation.text && (
+                        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
+                          {forensicData.explanation.text}
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 
-              <div className="text-sm font-medium text-right">
-                Total Points: {totalPoints}
+              <div className="text-xs font-semibold text-gray-700 text-right border-t pt-3">
+                Total Points: <span className="text-lg font-bold text-gray-900">{totalPoints}</span>
               </div>
             </>
           ) : (
             <>
-              <Label>Answer</Label>
-              <div className="p-2 bg-gray-50 rounded-md whitespace-pre-wrap">
-                {question.answer}
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold text-gray-700">Answer</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
+                  {question.answer}
+                </div>
               </div>
             </>
           )}
 
+          {/* Images Section */}
           {question.image && (
             <>
-              <Label>Images</Label>
-              <div className="p-2 bg-gray-50 rounded-md">
-                {imageGroups.standardImages && imageGroups.standardImages.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-sm font-medium mb-2">Standard Images</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {imageGroups.standardImages.map((imgUrl, index) => (
-                        <div key={`std-${index}`} className="space-y-2">
-                          <img src={imgUrl} alt={`Standard ${index + 1}`} className="max-w-full h-auto border rounded" />
-                        </div>
-                      ))}
+              <div className="space-y-3 border-t pt-4">
+                <Label className="text-sm font-semibold text-gray-700">Specimen Images</Label>
+                <div>
+                  {imageGroups.standardImages && imageGroups.standardImages.length > 0 && (
+                    <div className="mb-4">
+                      <div className="text-xs font-semibold text-gray-700 mb-3">Standard Specimen Images</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {imageGroups.standardImages.map((imgUrl, index) => (
+                          <div key={`std-${index}`} className="rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                            <img src={imgUrl} alt={`Standard ${index + 1}`} className="w-full h-40 object-cover" />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {imageGroups.questionImages && imageGroups.questionImages.length > 0 && (
-                  <div>
-                    <div className="text-sm font-medium mb-2">Question Images</div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {imageGroups.questionImages.map((imgUrl, index) => (
-                        <div key={`q-${index}`} className="space-y-2">
-                          <img src={imgUrl} alt={`Question ${index + 1}`} className="max-w-full h-auto border rounded" />
-                        </div>
-                      ))}
+                  {imageGroups.questionImages && imageGroups.questionImages.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-gray-700 mb-3">Question Specimen Images</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {imageGroups.questionImages.map((imgUrl, index) => (
+                          <div key={`q-${index}`} className="rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                            <img src={imgUrl} alt={`Question ${index + 1}`} className="w-full h-40 object-cover" />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </>
           )}
 
-          <Label>Created By</Label>
-          <div className="p-2 bg-gray-50 rounded-md">
-            {question.created_by || "System"}
-          </div>
+          {/* Created Info */}
+          <div className="grid grid-cols-2 gap-4 border-t pt-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-gray-700">Created By</Label>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-800">
+                {question.created_by || "System"}
+              </div>
+            </div>
 
-          <Label>Created Date</Label>
-          <div className="p-2 bg-gray-50 rounded-md">{question.created}</div>
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-gray-700">Created Date</Label>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-800">
+                {question.created}
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
