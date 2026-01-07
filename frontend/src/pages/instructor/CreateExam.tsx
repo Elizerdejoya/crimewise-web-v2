@@ -330,12 +330,13 @@ const CreateExam = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="duration">Duration (MM:SS)</Label>
+                <Label htmlFor="duration">Duration (HH:MM:SS)</Label>
                 <Input
                   id="duration"
-                  placeholder="e.g., 45:00"
+                  placeholder="e.g., 01:30:00 or 1:30:00"
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
+                  title="Format: HH:MM:SS (hours:minutes:seconds)"
                 />
               </div>
             </CardContent>

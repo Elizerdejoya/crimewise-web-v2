@@ -390,10 +390,23 @@ const TakeExam = () => {
       localStorage.setItem("examStartTimestamp", String(start));
     }
     setStartTimestamp(start);
-    const [mins, secs] = parsedExam.duration
+    const durationParts = parsedExam.duration
       .split(":")
       .map((v: string) => parseInt(v, 10));
-    const totalSeconds = mins * 60 + (secs || 0);
+    
+    let totalSeconds = 0;
+    if (durationParts.length === 3) {
+      // HH:MM:SS format
+      const [hours, mins, secs] = durationParts;
+      totalSeconds = hours * 3600 + mins * 60 + (secs || 0);
+    } else if (durationParts.length === 2) {
+      // MM:SS format (legacy)
+      const [mins, secs] = durationParts;
+      totalSeconds = mins * 60 + (secs || 0);
+    } else {
+      // Invalid format, default to 0
+      totalSeconds = 0;
+    }
     const elapsed = Math.floor((Date.now() - start) / 1000);
     const remaining = Math.max(totalSeconds - elapsed, 0);
     setTimeLeft(remaining);
@@ -476,11 +489,16 @@ const TakeExam = () => {
   }, [exam?.id, answer, explanation, studentConclusion, conclusionToggled]); // Dependencies for autosave logic
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
+    
+    // Display HH:MM:SS if there are hours, otherwise MM:SS
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    } else {
+      return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
   };
 
   // Common words to exclude from comparison
@@ -1402,7 +1420,7 @@ const TakeExam = () => {
         </CardHeader>
         <CardContent className="py-6 px-6 space-y-6">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-slate-900 text-base leading-relaxed">{question.text}</p>
+            <p className="text-slate-900 text-base leading-relaxed whitespace-pre-wrap">{question.text}</p>
           </div>
           {rubrics && (
             <div className="bg-gradient-to-r from-amber-50 to-amber-50 border border-amber-200 rounded-lg p-4">
