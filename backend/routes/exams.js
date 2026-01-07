@@ -798,7 +798,11 @@ router.post(
             return hasSubjective ? 0 : 100;
           }
           // Use explanationText for objectivity/structure evaluation (ignore table-only JSON)
-          let objectivityScore = calculateObjectivity(explanationText);
+          // Evaluate objectivity using both the extracted explanation text and any table-style
+          // student findings (studentFindingsStr). This ensures subjective phrases present
+          // inside table answers (eg. "I think") are detected.
+          const combinedForObjectivity = (((studentFindingsStr || '') + ' ' + (explanationText || '')).toString() || '').trim();
+          let objectivityScore = calculateObjectivity(combinedForObjectivity);
 
           // STRUCTURE/REASONING: Check for reasoning words
           function calculateStructure(text, conclusion) {
@@ -814,13 +818,20 @@ router.post(
             ];
             const lowerText = (text || '').toLowerCase();
             const hasReasoning = reasoningWords.some(word => lowerText.includes(word));
-            if (conclusion === true) {
-              // Correct conclusion = correct reasoning (implicit)
+
+            // Full credit only when conclusion is correct AND explicit reasoning is present
+            if (conclusion === true && hasReasoning) {
               return 100;
-            } else {
-              // Wrong conclusion: reward reasoning effort, else 0
-              return hasReasoning ? 50 : 0;
             }
+
+            // Partial credit (50) if either the conclusion is correct without explicit reasoning,
+            // or if reasoning is present even when the conclusion is not marked correct.
+            if (conclusion === true || hasReasoning) {
+              return 50;
+            }
+
+            // No reasoning and incorrect conclusion => 0
+            return 0;
           }
           let structureScore = calculateStructure(explanationText, conclusionCorrectLocal);
 
