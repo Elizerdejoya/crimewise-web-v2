@@ -538,7 +538,7 @@ const InstructorDashboard = () => {
         };
       })
       .sort((a, b) => b.avgScore - a.avgScore)
-      .slice(0, 10);
+      .slice(0, 3);
   };
 
   // Format date for display (e.g., Nov 25, 2025)

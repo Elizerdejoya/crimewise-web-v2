@@ -1512,7 +1512,7 @@ const ExamResults = () => {
           <div class="print-header"><img src="${topLogoUrl}" class="print-logo-top" alt="Top Logo" /></div>
           <h1>Exam Report — ${exam.name || exam.examName || 'Untitled'}</h1>
           <div class="info-grid">
-            <div class="info-item"><strong>Examination Date:</strong> ${formatDate((new Date()).toISOString())}</div>
+            <div class="info-item"><strong>Examination Date:</strong> ${formatDate(exam.start || exam.date)}${exam.end ? ` - ${formatDate(exam.end)}` : ''}</div>
             <div class="info-item"><strong>Class:</strong> ${getClassName(exam) || exam.class || exam.class_id || '-'}</div>
             <div class="info-item"><strong>Course:</strong> ${getCourseName(exam) || exam.course || exam.course_name || exam.course_id || '-'}</div>
             <div class="info-item"><strong>Participants:</strong> ${exam.participants || 0}</div>
