@@ -834,6 +834,11 @@ router.post(
             return 0;
           }
           let structureScore = calculateStructure(explanationText, conclusionCorrectLocal);
+          // If explanationText is empty but studentFindingsStr has content, use studentFindingsStr for structure check
+          // (handles case where studentFindings is a plain string, not wrapped in JSON with explanation property)
+          if (!explanationText && studentFindingsStr) {
+            structureScore = calculateStructure(studentFindingsStr, conclusionCorrectLocal);
+          }
 
           // If there is no student findings text AND no student conclusion, set all component scores to zero
           // Consider student findings present only if explicit explanation text exists (not table answers)
