@@ -842,7 +842,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
               id="explanation"
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
-              placeholder="Enter an expected explanation or keywordsfor the table comparison..."
+              placeholder="Enter an expected explanation or evidence you want to see.."
               rows={4}
             />
             <div className="text-sm text-muted-foreground">
