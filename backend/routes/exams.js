@@ -802,12 +802,23 @@ router.post(
 
           // STRUCTURE/REASONING: Check for reasoning words
           function calculateStructure(text, conclusion) {
-            const reasoningWords = ['because', 'therefore', 'thus', 'as a result', 'due to', 'caused by', 'resulting in', 'consequently', 'hence'];
+            const reasoningWords = [
+              'because', 'therefore', 'thus', 'as a result', 'due to', 'caused by', 'resulting in', 'consequently', 'hence',
+              'so', 'for this reason', 'on account of', 'in light of', 'given that', 'in view of',
+              'this shows', 'this indicates', 'this demonstrates', 'this reveals', 'this proves',
+              'it follows that', 'which means', 'meaning', 'signifying', 'implies', 'suggests',
+              'points to', 'demonstrates', 'shows', 'reveals', 'proves', 'indicates',
+              'evidence of', 'support for', 'reason', 'reasoned', 'reasoning',
+              'conclude', 'conclusion', 'infer', 'inference', 'deduce', 'deduction',
+              'logic', 'logically', 'since', 'subsequently', 'accordingly'
+            ];
             const lowerText = (text || '').toLowerCase();
             const hasReasoning = reasoningWords.some(word => lowerText.includes(word));
             if (conclusion === true) {
-              return hasReasoning ? 100 : 50;
+              // Correct conclusion = correct reasoning (implicit)
+              return 100;
             } else {
+              // Wrong conclusion: reward reasoning effort, else 0
               return hasReasoning ? 50 : 0;
             }
           }
