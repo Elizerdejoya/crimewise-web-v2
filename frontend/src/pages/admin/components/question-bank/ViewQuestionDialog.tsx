@@ -321,7 +321,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                   <>
                     <div className="space-y-3 border-t pt-4">
                       <Label className="text-sm font-semibold text-gray-700">
-                        Explanation
+                        Findings
                         <span className="text-xs text-gray-500 font-normal ml-2">
                           ({forensicData.explanation.points} points)
                         </span>

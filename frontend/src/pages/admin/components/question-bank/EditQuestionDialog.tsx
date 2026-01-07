@@ -697,6 +697,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                 <table className="w-full border text-sm">
                   <thead className="sticky top-0 bg-white">
                     <tr>
+                      <th className="border p-2 w-12 text-center">#</th>
                       <th className="border p-2">Question Specimen</th>
                       <th className="border p-2">Standard Specimen</th>
                       <th className="border p-2 w-24">Points</th>
@@ -707,6 +708,9 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                   <tbody>
                     {forensicRows.map((row, idx) => (
                       <tr key={idx}>
+                        <td className="border p-2 text-center font-medium w-12">
+                          {idx + 1}
+                        </td>
                         <td className="border p-2">
                           <input
                             className="w-full border px-2 py-1"
@@ -800,7 +804,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="explanation">Explanation</Label>
+                  <Label htmlFor="findings">Findings</Label>
                   <div className="flex items-center gap-2">
                     <Label htmlFor="explanation-points" className="text-sm">Points:</Label>
                     <Input
