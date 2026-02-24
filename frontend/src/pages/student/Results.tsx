@@ -213,19 +213,17 @@ const Results = () => {
   };
 
   // Default rubric weights used for fallback distribution when component scores are missing/zero
-  // Weights as percentages: Completeness 40%, Clarity 20%, Objectivity 10%, Structure/Reasoning 30%
+  // Weights as percentages: Completeness 70%, Objectivity 15%, Structure/Reasoning 15%
   const DEFAULT_RUBRIC_WEIGHTS: Record<string, number> = {
-    findingsSimilarity: 40,
-    clarity: 20,
-    objectivity: 10,
-    structure: 30,
+    findingsSimilarity: 70, // stored key remains findingsSimilarity for compatibility
+    objectivity: 15,
+    structure: 15,
   };
 
   const RUBRIC_LABELS: Record<string, string> = {
-    findingsSimilarity: "Completeness (how much the student's findings text matches the teacher's findings)",
-    clarity: "Clarity (is the explanation easy to read and understand)",
-    objectivity: "Objectivity (how objective (non‑opinionated) the language is)",
-    structure: "Structure / Reasoning (does the answer show evidence)",
+    findingsSimilarity: "Completeness (conclusion + keywords)",
+    objectivity: "Objectivity (no subjective words)",
+    structure: "Structure / Reasoning (reasoning words)",
   };
 
   // Search function

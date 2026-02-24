@@ -57,6 +57,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   const [selectedKeywordPool, setSelectedKeywordPool] = useState<any>(null);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const standardImageInputRef = useRef<HTMLInputElement>(null);
   const questionImageInputRef = useRef<HTMLInputElement>(null);
@@ -366,7 +367,21 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   // Save edit handler
   const handleSaveEdit = () => {
     if (!editForm) return;
-    
+    // Validate rubric sum when editing
+    const totalRubrics =
+      Number(rubrics.findingsSimilarity || 0) +
+      Number(rubrics.objectivity || 0) +
+      Number(rubrics.structure || 0);
+    if (totalRubrics !== 100) {
+      toast({
+        title: "Validation Error",
+        description: "Rubric weights must total 100%.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
     // Update forensic answer if applicable
     const updatedForm = editForm.type === "forensic" ? updateForensicAnswer() : editForm;
     
@@ -378,15 +393,18 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
     };
     // Attach rubrics
     formWithKeywords.rubrics = JSON.stringify(rubrics);
+    console.log('[EditQuestionDialog] update payload', formWithKeywords);
     
     updateQuestion(
       formWithKeywords,
-      () => {
+      (updated) => {
+        setIsSaving(false);
         toast({ title: "Success", description: "Question updated successfully." });
         onOpenChange(false);
         onQuestionUpdated();
       },
       (err) => {
+        setIsSaving(false);
         toast({ 
           title: "Error", 
           description: err.message || "Failed to update question.", 
@@ -559,10 +577,17 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
           <div className="space-y-3 border-t pt-4">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
-              <div className="text-xs font-medium text-gray-600">
-                Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%
-              </div>
+              <div className={`text-xs font-medium ${
+                rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100
+                  ? 'text-gray-600'
+                  : 'text-red-600'
+              }`}>Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
             </div>
+            {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100 && (
+              <div className="text-sm text-red-600">
+                Total must equal 100% before saving.
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5 p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
                 <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
@@ -845,11 +870,11 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => !isSaving && onOpenChange(false)} disabled={isSaving}>
               Cancel
             </Button>
-            <Button onClick={handleSaveEdit}>
-              Save
+            <Button onClick={handleSaveEdit} disabled={isSaving || rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100}>
+              {isSaving ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </div>

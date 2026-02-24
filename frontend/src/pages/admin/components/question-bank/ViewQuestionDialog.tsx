@@ -136,19 +136,18 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
       if (question.rubrics) {
         const parsed = typeof question.rubrics === 'string' ? JSON.parse(question.rubrics) : question.rubrics;
         return {
-          findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 70),
-          clarity: Number(parsed.clarity ?? 20),
+          findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.completeness ?? 70),
           objectivity: Number(parsed.objectivity ?? 15),
-          structure: Number(parsed.structure ?? parsed.completeness ?? 15),
+          structure: Number(parsed.structure ?? 15),
         };
       } else {
         // Default rubrics if none assigned
-        return { findingsSimilarity: 70, clarity: 20, objectivity: 15, structure: 15 };
+        return { findingsSimilarity: 70, objectivity: 15, structure: 15 };
       }
     } catch (e) {
       console.error('Error parsing question rubrics:', e);
       // Fallback to defaults
-      return { findingsSimilarity: 70, clarity: 20, objectivity: 15, structure: 15 };
+      return { findingsSimilarity: 70, objectivity: 15, structure: 15 };
     }
   }, [question]);
 

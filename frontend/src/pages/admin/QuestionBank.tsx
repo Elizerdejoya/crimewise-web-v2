@@ -46,7 +46,16 @@ const QuestionBank = () => {
   // Load initial data
   const loadQuestions = () => {
     fetchQuestions(
-      (data) => setQuestions(data),
+      (data) => {
+        setQuestions(data);
+        // if we have a selected question, update it with fresh data
+        if (selectedQuestion && selectedQuestion.id) {
+          const updated = data.find(q => q.id === selectedQuestion.id);
+          if (updated) {
+            setSelectedQuestion(updated);
+          }
+        }
+      },
       (err) => {
         toast({ title: "Error", description: "Failed to fetch questions.", variant: "destructive" });
         console.error("[Questions][Fetch] Error:", err);

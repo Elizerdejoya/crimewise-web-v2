@@ -48,9 +48,10 @@ async function seed() {
     await db.sql`INSERT OR IGNORE INTO instructor_course (id, instructor_id, course_id) VALUES (1, 2, 1), (2, 2, 2)`;
 
     // --- QUESTIONS ---
-    await db.sql`INSERT OR IGNORE INTO questions (id, title, text, course_id, difficulty, type, answer, points, created_by, organization_id) VALUES
-      (1, 'What is a felony?', 'Define felony in criminal law.', 1, 'easy', 'short', 'A felony is a serious crime.', 5, 3, 1),
-      (2, 'Evidence types', 'List two types of forensic evidence.', 2, 'medium', 'short', 'Physical, Biological', 5, 3, 1)
+    const defaultRub = JSON.stringify({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
+    await db.sql`INSERT OR IGNORE INTO questions (id, title, text, course_id, difficulty, type, answer, points, rubrics, created_by, organization_id) VALUES
+      (1, 'What is a felony?', 'Define felony in criminal law.', 1, 'easy', 'short', 'A felony is a serious crime.', 5, ${defaultRub}, 3, 1),
+      (2, 'Evidence types', 'List two types of forensic evidence.', 2, 'medium', 'short', 'Physical, Biological', 5, ${defaultRub}, 3, 1)
     `;
 
     // --- EXAMS ---

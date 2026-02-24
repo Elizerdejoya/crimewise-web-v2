@@ -1,6 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
+// ensure any pre‑existing questions with NULL rubrics get default weights
+(async function backfillRubrics() {
+  try {
+    const defaultRub = JSON.stringify({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
+    await db.sql`UPDATE questions SET rubrics = ${defaultRub} WHERE rubrics IS NULL`;
+    console.log('[QUESTIONS] backfilled null rubrics with defaults');
+  } catch (e) {
+    console.error('[QUESTIONS] failed to backfill rubrics:', e && e.message ? e.message : e);
+  }
+})();
+
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -76,6 +87,12 @@ router.get(
         `;
       }
 
+      // convert rubrics string to object for convenience
+      query.forEach(q => {
+        if (q.rubrics) {
+          try { q.rubrics = JSON.parse(q.rubrics); } catch (e) {}
+        }
+      });
       res.json(query);
     } catch (err) {
       console.log("[QUESTIONS][GET] Error:", err.message);
@@ -132,7 +149,9 @@ router.get(
       if (!query || query.length === 0) {
         return res.status(404).json({ error: "Question not found" });
       }
-
+      if (query[0].rubrics) {
+        try { query[0].rubrics = JSON.parse(query[0].rubrics); } catch (e) {}
+      }
       res.json(query[0]);
     } catch (err) {
       console.log("[QUESTIONS][GET by ID] Error:", err.message);
@@ -178,6 +197,12 @@ router.get(
       `;
       }
 
+      // convert rubrics string to object for convenience
+      query.forEach(q => {
+        if (q.rubrics) {
+          try { q.rubrics = JSON.parse(q.rubrics); } catch (e) {}
+        }
+      });
       res.json(query);
     } catch (err) {
       console.log("[QUESTIONS][GET by Course] Error:", err.message);
@@ -194,6 +219,7 @@ router.post(
   addOrganizationFilter(),
   async (req, res) => {
     try {
+      console.log('[QUESTIONS][POST] body:', req.body);
       const {
         title,
         text,
@@ -205,6 +231,7 @@ router.post(
         points,
         keyword_pool_id,
         selected_keywords,
+        rubrics,
       } = req.body;
       const created_by = req.user.id; // Use authenticated user ID
       const orgFilter = req.getOrgFilter();
@@ -250,6 +277,35 @@ router.post(
         }
       }
 
+      // validate rubrics if provided
+      let rubricJson = null;
+      if (rubrics !== undefined && rubrics !== null) {
+        try {
+          const parsed = typeof rubrics === 'string' ? JSON.parse(rubrics) : rubrics;
+          const total =
+            Number(parsed.findingsSimilarity || 0) +
+            Number(parsed.objectivity || 0) +
+            Number(parsed.structure || 0);
+          if (total !== 100) {
+            return res
+              .status(400)
+              .json({ error: 'Rubric weights must total 100%' });
+          }
+          rubricJson = JSON.stringify(parsed);
+        } catch (e) {
+          // bad rubrics format
+          return res.status(400).json({ error: 'Invalid rubrics format' });
+        }
+      }
+
+      // if nothing explicitly provided, default to standard weights
+      if (rubricJson === null) {
+        const defaultRubrics = { findingsSimilarity: 70, objectivity: 15, structure: 15 };
+        rubricJson = JSON.stringify(defaultRubrics);
+      }
+
+      console.log('[QUESTIONS][POST] rubricJson =', rubricJson);
+
       // Get organization_id for the new question
       const organization_id = orgFilter.hasFilter
         ? orgFilter.organizationId
@@ -257,10 +313,11 @@ router.post(
 
       // Insert the new question
       const result = await db.sql`
-      INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, keyword_pool_id, selected_keywords, created_by, organization_id, created) 
-      VALUES (${title}, ${text}, ${course_id}, ${difficulty}, ${type}, ${validatedAnswer}, ${image}, ${totalPoints}, ${keyword_pool_id || null}, ${selected_keywords ? JSON.stringify(selected_keywords) : null}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
-      RETURNING id
+      INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, keyword_pool_id, selected_keywords, rubrics, created_by, organization_id, created) 
+      VALUES (${title}, ${text}, ${course_id}, ${difficulty}, ${type}, ${validatedAnswer}, ${image}, ${totalPoints}, ${keyword_pool_id || null}, ${selected_keywords ? JSON.stringify(selected_keywords) : null}, ${rubricJson}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
+      RETURNING id, rubrics
     `;
+      console.log('[QUESTIONS][POST] inserted rubrics =', result[0] && result[0].rubrics);
 
       const newId = result[0].id;
 
@@ -305,6 +362,7 @@ router.put(
   addOrganizationFilter(),
   async (req, res) => {
     try {
+      console.log('[QUESTIONS][PUT] body:', req.body);
       const {
         title,
         text,
@@ -316,6 +374,7 @@ router.put(
         points,
         keyword_pool_id,
         selected_keywords,
+        rubrics,
       } = req.body;
       const id = req.params.id;
       const orgFilter = req.getOrgFilter();
@@ -369,8 +428,33 @@ router.put(
       console.log(
         `Updating question: id=${questionId}, title=${title}, course_id=${courseId}, points=${totalPoints}`
       );
+      console.log('[QUESTIONS][PUT] incoming rubrics payload:', rubrics);
 
-      // Update the question with organization check
+      // validate rubrics if provided
+      let rubricJson = null;
+      if (rubrics !== undefined && rubrics !== null) {
+        try {
+          const parsed = typeof rubrics === 'string' ? JSON.parse(rubrics) : rubrics;
+          const total =
+            Number(parsed.findingsSimilarity || 0) +
+            Number(parsed.objectivity || 0) +
+            Number(parsed.structure || 0);
+          if (total !== 100) {
+            return res
+              .status(400)
+              .json({ error: 'Rubric weights must total 100%' });
+          }
+          rubricJson = JSON.stringify(parsed);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid rubrics format' });
+        }
+      }
+
+
+      console.log('[QUESTIONS][PUT] rubricJson =', rubricJson);
+
+      // Update the question with organization check; always use COALESCE so existing
+      // rubrics value is preserved when rubricJson is null/undefined.
       let result;
       if (orgFilter.hasFilter) {
         result = await db.sql`
@@ -379,8 +463,10 @@ router.put(
             difficulty = ${difficulty}, type = ${type}, answer = ${validatedAnswer}, 
             image = ${image}, points = ${totalPoints}, 
             keyword_pool_id = ${keyword_pool_id || null}, 
-            selected_keywords = ${selected_keywords || null}
+            selected_keywords = ${selected_keywords || null},
+            rubrics = COALESCE(${rubricJson}, rubrics)
         WHERE id = ${questionId} AND organization_id = ${orgFilter.organizationId}
+        RETURNING rubrics
       `;
       } else {
         result = await db.sql`
@@ -389,14 +475,18 @@ router.put(
             difficulty = ${difficulty}, type = ${type}, answer = ${validatedAnswer}, 
             image = ${image}, points = ${totalPoints}, 
             keyword_pool_id = ${keyword_pool_id || null}, 
-            selected_keywords = ${selected_keywords || null}
+            selected_keywords = ${selected_keywords || null},
+            rubrics = COALESCE(${rubricJson}, rubrics)
         WHERE id = ${questionId}
+        RETURNING rubrics
       `;
       }
 
       if (result.rowsAffected === 0) {
         return res.status(404).json({ error: "Question not found" });
       }
+
+      console.log('[QUESTIONS][PUT] update result:', result);
 
       // Get the updated question with course and user details
       const updatedQuestion = await db.sql`
@@ -410,10 +500,89 @@ router.put(
       LEFT JOIN users u ON q.created_by = u.id
       WHERE q.id = ${questionId}
     `;
+      console.log('[QUESTIONS][PUT] fetched updated rubrics =', updatedQuestion[0] && updatedQuestion[0].rubrics);
 
       res.json(updatedQuestion[0]);
     } catch (err) {
       console.log("[QUESTIONS][PUT] Error:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// PUT only rubrics for a question (useful for debugging and direct updates)
+router.put(
+  "/questions/:id/rubrics",
+  authenticateToken,
+  requireRole("admin", "instructor", "super_admin"),
+  addOrganizationFilter(),
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { rubrics } = req.body;
+      console.log('[QUESTIONS][PUT rubrics] incoming:', { id, rubrics });
+      if (!rubrics) {
+        return res.status(400).json({ error: 'Missing rubrics payload' });
+      }
+      let rubricJson;
+      try {
+        const parsed = typeof rubrics === 'string' ? JSON.parse(rubrics) : rubrics;
+        const total =
+          Number(parsed.findingsSimilarity || 0) +
+          Number(parsed.objectivity || 0) +
+          Number(parsed.structure || 0);
+        if (total !== 100) {
+          return res.status(400).json({ error: 'Rubric weights must total 100%' });
+        }
+        rubricJson = JSON.stringify(parsed);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid rubrics format' });
+      }
+
+      const orgFilter = req.getOrgFilter();
+      let result;
+      if (orgFilter.hasFilter) {
+        result = await db.sql`
+          UPDATE questions SET rubrics = ${rubricJson} 
+          WHERE id = ${id} AND organization_id = ${orgFilter.organizationId}
+          RETURNING id, rubrics
+        `;
+      } else {
+        result = await db.sql`
+          UPDATE questions SET rubrics = ${rubricJson} 
+          WHERE id = ${id}
+          RETURNING id, rubrics
+        `;
+      }
+      if (!result || result.length === 0) {
+        return res.status(404).json({ error: 'Question not found' });
+      }
+      console.log('[QUESTIONS][PUT rubrics] updated:', result[0]);
+      res.json(result[0]);
+    } catch (err) {
+      console.log("[QUESTIONS][PUT rubrics] Error:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// GET only rubrics for a question (no auth) - useful for debugging via curl
+router.get(
+  "/questions/:id/rubrics",
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+      const q = await db.sql`
+        SELECT rubrics FROM questions WHERE id = ${id}
+      `;
+      if (!q || q.length === 0) {
+        return res.status(404).json({ error: 'Question not found' });
+      }
+      let rubrics = q[0].rubrics;
+      try { rubrics = JSON.parse(rubrics); } catch (e) {}
+      res.json({ id, rubrics });
+    } catch (err) {
+      console.log("[QUESTIONS][GET rubrics] Error:", err.message);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -637,6 +806,7 @@ router.post(
           answer,
           image,
           points,
+          rubrics,
         } = question;
         const created_by = req.user.id; // Use current user as creator of the copy
         const organization_id = orgFilter.hasFilter
@@ -645,11 +815,10 @@ router.post(
 
         // Insert the copy
         const result = await db.sql`
-        INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, created_by, organization_id, created) 
-        VALUES (${
+        INSERT INTO questions (title, text, course_id, difficulty, type, answer, image, points, rubrics, created_by, organization_id, created) 
+        VALUES (${ 
           "Copy of " + title
-        }, ${text}, ${course_id}, ${difficulty}, ${type}, ${answer}, ${image}, ${points}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
-        RETURNING id
+        }, ${text}, ${course_id}, ${difficulty}, ${type}, ${answer}, ${image}, ${points}, ${rubrics}, ${created_by}, ${organization_id}, CURRENT_TIMESTAMP)
       `;
 
         copiedQuestions.push({

@@ -37,7 +37,8 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings,
   }
   
   // Attempt to load per-question rubric weights from the exams->questions relationship
-  let rubricWeights = { accuracy: 40, completeness: 30, clarity: 20, objectivity: 10 };
+  // we only care about completeness, objectivity and structure; accuracy column is repurposed for completeness
+  let rubricWeights = { completeness: 70, objectivity: 15, structure: 15 };
   // Track whether the external API call succeeded. If it did, parsing errors should NOT trigger
   // the network-based fallbacks — only true call failures (network/auth) should.
   let apiCallSucceeded = false;
@@ -51,10 +52,9 @@ async function gradeStudent(studentId, examId, teacherFindings, studentFindings,
         try {
           const parsed = typeof question.rubrics === 'string' ? JSON.parse(question.rubrics) : question.rubrics;
           rubricWeights = {
-            accuracy: Number(parsed.accuracy ?? 40),
-            completeness: Number(parsed.completeness ?? 30),
-            clarity: Number(parsed.clarity ?? 20),
-            objectivity: Number(parsed.objectivity ?? 10),
+            completeness: Number(parsed.findingsSimilarity ?? parsed.completeness ?? 70),
+            objectivity: Number(parsed.objectivity ?? 15),
+            structure: Number(parsed.structure ?? 15),
           };
         } catch (e) {
           // ignore parse errors and use defaults
@@ -72,10 +72,9 @@ CRITICAL RULES FOR 100% SCORING:
 - No minor deductions for identical answers. Deduct points ONLY if information is incorrect, missing, or contradicts the answer key.
 
 Grading criteria:
-1. Accuracy (${rubricWeights.accuracy}%) - Do the findings match the teacher's answer? For exact matches or matches with slight rewording, give 100. Deduct only for incorrect or contradictory information.
-2. Completeness (${rubricWeights.completeness}%) - Are all important points from the answer key covered? Give 100 if all major points match. Deduct only for missing important details.
-3. Clarity (${rubricWeights.clarity}%) - Is the writing clear and easy to understand? Give 100 if clear. Deduct only for confusing or poorly organized writing.
-4. Objectivity (${rubricWeights.objectivity}%) - Is the analysis objective without personal bias? Give 100 if objective. Deduct only for obvious personal opinions or biases.
+1. Completeness (${rubricWeights.completeness}%) - Does the student's answer include the correct conclusion and the expected keywords/points? Give 100 if fully covered; deduct only for missing elements.
+2. Objectivity (${rubricWeights.objectivity}%) - Is the analysis objective without personal bias? Give 100 if objective. Deduct only for obvious personal opinions or biases.
+3. Structure (${rubricWeights.structure}%) - Does the answer include reasoning words and logical flow? Give 100 if reasoning is clear; partial credit if some reasoning present.
 
 CRITICAL - OUTPUT REQUIREMENTS:
 - Your feedback MUST use simple, clear language suitable for students learning forensic analysis.
@@ -96,10 +95,9 @@ ${studentFindings}
 
 Return ONLY valid JSON with these exact fields:
 {
-  "accuracy": (number 0-100),
   "completeness": (number 0-100),
-  "clarity": (number 0-100),
   "objectivity": (number 0-100),
+  "structure": (number 0-100),
   "overall_score": (number 0-100),
   "feedback": "Brief feedback in simple language for a forensic analysis student. Example: 'You correctly identified the handwriting slant and pressure. Your analysis was clear and objective. Well done.'"
 }`;
@@ -207,36 +205,35 @@ Return ONLY valid JSON with these exact fields:
       return null;
     };
 
-    let rawAcc = parseNum(parsed.accuracy ?? parsed.Accuracy ?? parsed.accuracy_percent ?? null);
-    let rawComp = parseNum(parsed.completeness ?? parsed.Completeness ?? parsed.completeness_percent ?? null);
-    let rawClar = parseNum(parsed.clarity ?? parsed.Clarity ?? parsed.clarity_percent ?? null);
-    let rawObj = parseNum(parsed.objectivity ?? parsed.Objectivity ?? parsed.objectivity_percent ?? null);
+    // parse returned component scores; expect completeness/objectivity/structure
+    let rawComp = parseNum(parsed.completeness ?? parsed.Completeness ?? parsed.accuracy ?? null);
+    let rawObj = parseNum(parsed.objectivity ?? parsed.Objectivity ?? null);
+    let rawStruct = parseNum(parsed.structure ?? parsed.Structure ?? null);
 
     // If model returned only overall_score, distribute the overall into components using rubric weights
     let parsedOverall = parseNum(parsed.overall_score ?? parsed.overall ?? parsed.score ?? null);
 
     // If individual components are missing (null) but overall exists, compute proportional breakdown
-    const totalWeight = (rubricWeights.accuracy || 0) + (rubricWeights.completeness || 0) + (rubricWeights.clarity || 0) + (rubricWeights.objectivity || 0) || 100;
+    const totalWeight = (rubricWeights.completeness || 0) + (rubricWeights.objectivity || 0) + (rubricWeights.structure || 0) || 100;
     if (parsedOverall !== null) {
-      if (rawAcc === null) rawAcc = Math.round(parsedOverall * (rubricWeights.accuracy || 0) / totalWeight);
       if (rawComp === null) rawComp = Math.round(parsedOverall * (rubricWeights.completeness || 0) / totalWeight);
-      if (rawClar === null) rawClar = Math.round(parsedOverall * (rubricWeights.clarity || 0) / totalWeight);
       if (rawObj === null) rawObj = Math.round(parsedOverall * (rubricWeights.objectivity || 0) / totalWeight);
+      if (rawStruct === null) rawStruct = Math.round(parsedOverall * (rubricWeights.structure || 0) / totalWeight);
     }
 
     // Final numeric values (default to 0)
-    const accuracy = Math.round(Number(rawAcc ?? 0));
     const completeness = Math.round(Number(rawComp ?? 0));
-    const clarity = Math.round(Number(rawClar ?? 0));
     const objectivity = Math.round(Number(rawObj ?? 0));
+    const structure = Math.round(Number(rawStruct ?? 0));
+    // mirror completeness into accuracy column for legacy UI
+    const accuracy = completeness;
     let overall = Number(parsed.overall_score ?? parsed.overall ?? parsed.score ?? NaN);
     if (Number.isNaN(overall)) {
-      const totalWeight = (rubricWeights.accuracy || 0) + (rubricWeights.completeness || 0) + (rubricWeights.clarity || 0) + (rubricWeights.objectivity || 0) || 100;
-      const wAcc = (rubricWeights.accuracy || 0) / totalWeight;
+      const totalWeight = (rubricWeights.completeness || 0) + (rubricWeights.objectivity || 0) + (rubricWeights.structure || 0) || 100;
       const wComp = (rubricWeights.completeness || 0) / totalWeight;
-      const wClar = (rubricWeights.clarity || 0) / totalWeight;
       const wObj = (rubricWeights.objectivity || 0) / totalWeight;
-      overall = Math.round(accuracy * wAcc + completeness * wComp + clarity * wClar + objectivity * wObj);
+      const wStruct = (rubricWeights.structure || 0) / totalWeight;
+      overall = Math.round(completeness * wComp + objectivity * wObj + structure * wStruct);
     }
 
     let feedback = String(parsed.feedback ?? (parsed.comments ?? 'No feedback'));
@@ -368,7 +365,7 @@ Return ONLY valid JSON with these exact fields:
     }
 
     try {
-      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${overall}, ${accuracy}, ${completeness}, ${clarity}, ${objectivity}, ${feedback}, ${text}, ${keyIndex})`;
+      await db.sql`INSERT INTO ai_grades (student_id, exam_id, score, accuracy, completeness, clarity, objectivity, feedback, raw_response, api_key_index) VALUES (${studentId}, ${examId}, ${overall}, ${accuracy}, ${completeness}, ${structure}, ${objectivity}, ${feedback}, ${text}, ${keyIndex})`;
     } catch (dbErr) {
       console.error('[GRADER] Failed to save AI grade:', dbErr && dbErr.message ? dbErr.message : dbErr);
     }

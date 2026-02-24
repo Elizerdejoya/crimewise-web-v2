@@ -151,6 +151,7 @@ async function migrate() {
       points INTEGER,
       explanation TEXT,
       explanation_points INTEGER DEFAULT 0,
+      rubrics TEXT NOT NULL DEFAULT '{"findingsSimilarity":70,"objectivity":15,"structure":15}',
       created_by INTEGER,
       organization_id INTEGER,
       created TEXT DEFAULT CURRENT_TIMESTAMP,

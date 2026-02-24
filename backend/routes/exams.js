@@ -729,6 +729,24 @@ router.post(
             teacherLen: teacherClean.length
           });
 
+          // --- load rubric weights from question (fall back to defaults) ---
+          let rubricWeights = { findingsSimilarity: 70, objectivity: 15, structure: 15 };
+          try {
+            const rubRow = await db.sql`
+              SELECT q.rubrics FROM exams e
+              JOIN questions q ON e.question_id = q.id
+              WHERE e.id = ${exam_id} LIMIT 1
+            `;
+            if (rubRow && rubRow.length > 0 && rubRow[0].rubrics) {
+              const parsedRub = typeof rubRow[0].rubrics === 'string' ? JSON.parse(rubRow[0].rubrics) : rubRow[0].rubrics;
+              rubricWeights.findingsSimilarity = Number(parsedRub.findingsSimilarity ?? parsedRub.completeness ?? 70);
+              rubricWeights.objectivity = Number(parsedRub.objectivity ?? 15);
+              rubricWeights.structure = Number(parsedRub.structure ?? 15);
+            }
+          } catch (e) {
+            console.error('[EXAMS][SUBMIT] failed to load rubric weights:', e && e.message ? e.message : e);
+          }
+
           // Word-based similarity: how many key words from expected answer appear in student answer
           function calculateWordSimilarity(studentText, teacherText) {
             // Split into words, remove punctuation, convert to lowercase
@@ -851,11 +869,11 @@ router.post(
             structureScore = 0;
           }
 
-          // Overall score: Accuracy 70%, Objectivity 15%, Structure 15%
+          // Overall score using per-question rubric weights
           const overallScore = Math.round(
-            (accuracyScore / 100 * 70) + 
-            (objectivityScore / 100 * 15) + 
-            (structureScore / 100 * 15)
+            (accuracyScore / 100 * rubricWeights.findingsSimilarity) + 
+            (objectivityScore / 100 * rubricWeights.objectivity) + 
+            (structureScore / 100 * rubricWeights.structure)
           );
 
           console.log(`[EXAMS][SUBMIT] Calculated NEW RUBRIC scores:`, { 
@@ -863,6 +881,7 @@ router.post(
             objectivityScore,
             structureScore,
             overallScore,
+            rubricWeights,
             conclusionCorrect: conclusionCorrectLocal
           });
 

@@ -89,11 +89,12 @@ async function seedPostgres() {
 
     // Questions
     console.log('❓ Creating questions...');
+    const defaultRub = JSON.stringify({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
     await db.sql`
-      INSERT INTO questions (organization_id, exam_id, question_text, question_type, points)
+      INSERT INTO questions (organization_id, exam_id, question_text, question_type, points, rubrics)
       VALUES
-        (${orgId}, 1, 'What is a felony?', 'short', 5),
-        (${orgId}, 2, 'List two types of forensic evidence.', 'short', 5)
+        (${orgId}, 1, 'What is a felony?', 'short', 5, ${defaultRub}),
+        (${orgId}, 2, 'List two types of forensic evidence.', 'short', 5, ${defaultRub})
       ON CONFLICT DO NOTHING
     `;
 

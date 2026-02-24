@@ -18,8 +18,17 @@ let databaseUrl = normalizeEnvUrl(process.env.DATABASE_URL) || "postgresql://neo
 
 // Safe debug log (do not print full secret)
 const hasDb = !!databaseUrl;
-const prefix = (databaseUrl || '').slice(0, 12);
-console.log('[DB] DATABASE_URL present:', hasDb, 'prefix:', prefix.replace(/\"/g, ''));
+// mask password for logging
+function maskUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = '****';
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+console.log('[DB] DATABASE_URL present:', hasDb, 'url:', maskUrl(databaseUrl));
 
 if (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')) {
   // Use PostgreSQL adapter

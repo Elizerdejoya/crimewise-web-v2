@@ -412,17 +412,16 @@ const TakeExam = () => {
             if (q && q.rubrics) {
               const parsed = typeof q.rubrics === 'string' ? JSON.parse(q.rubrics) : q.rubrics;
               setRubrics({
-                findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.accuracy ?? 40),
-                clarity: Number(parsed.clarity ?? 20),
-                objectivity: Number(parsed.objectivity ?? 10),
-                structure: Number(parsed.structure ?? parsed.completeness ?? 30),
+                findingsSimilarity: Number(parsed.findingsSimilarity ?? parsed.completeness ?? 70),
+                objectivity: Number(parsed.objectivity ?? 15),
+                structure: Number(parsed.structure ?? 15),
               });
             } else {
-              setRubrics({ findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 });
+              setRubrics({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
             }
           } catch (e) {
             console.error('Error parsing question rubrics:', e);
-            setRubrics({ findingsSimilarity: 40, clarity: 20, objectivity: 10, structure: 30 });
+            setRubrics({ findingsSimilarity: 70, objectivity: 15, structure: 15 });
           }
         }
       });
@@ -849,35 +848,31 @@ const TakeExam = () => {
 
           // ======== NEW RUBRIC SCORING ========
           // Rubric weights (must add up to 100)
-          // Findings Similarity is split: 50% conclusion + 30% text similarity
-          const findingsSimilarityWeight = (rubrics && typeof rubrics.findingsSimilarity === 'number') ? Number(rubrics.findingsSimilarity) : 80; // 50 + 30
-          const clarityWeight = (rubrics && typeof rubrics.clarity === 'number') ? Number(rubrics.clarity) : 5;
-          const objectivityWeight = (rubrics && typeof rubrics.objectivity === 'number') ? Number(rubrics.objectivity) : 5;
-          const structureWeight = (rubrics && typeof rubrics.structure === 'number') ? Number(rubrics.structure) : 10;
+          const completenessWeight = (rubrics && typeof rubrics.findingsSimilarity === 'number') ? Number(rubrics.findingsSimilarity) : 70;
+          const objectivityWeight = (rubrics && typeof rubrics.objectivity === 'number') ? Number(rubrics.objectivity) : 15;
+          const structureWeight = (rubrics && typeof rubrics.structure === 'number') ? Number(rubrics.structure) : 15;
 
-          // Conclusion check (50% of findings similarity) - compare against expectedConclusion, not teacherFindings
-          const conclusionMatches = studentConclusion && expectedConclusion ? 
+          // Conclusion check (50% of completeness) - compare against expectedConclusion, not teacherFindings
+          const conclusionMatches = studentConclusion && expectedConclusion ?
             String(studentConclusion).trim().toLowerCase() === String(expectedConclusion).trim().toLowerCase() : false;
           const conclusionScore = conclusionMatches ? 100 : 0; // percentage 0-100
 
-          // Text similarity (30% of findings similarity)
+          // Text similarity (remaining 50% of completeness)
           const textSimilarityScore = computeFindingsSimilarity(explanation, teacherFindings); // percentage 0-100
 
-          // Combined findings similarity: 50% conclusion + 30% text = overall findings % (scaled to 80%)
-          const findingsSimilarityScore = (conclusionScore * 0.5) + (textSimilarityScore * 0.3); // percentage 0-100
+          // Combined completeness score: 50% conclusion + 50% text
+          const completenessScore = (conclusionScore * 0.5) + (textSimilarityScore * 0.5); // percentage 0-100
 
           // Compute other rubric components (all return percentages 0-100)
-          const clarityScore = computeClarity(explanation); // percentage 0-100
           const objectivityScore = computeObjectivity(explanation); // percentage 0-100
           const structureScore = computeStructure(explanation); // percentage 0-100
 
           // Weight all components consistently: (component% / 100) * weight
-          const weightedFindingsSimilarity = (findingsSimilarityScore / 100) * findingsSimilarityWeight;
-          const weightedClarity = (clarityScore / 100) * clarityWeight;
+          const weightedCompleteness = (completenessScore / 100) * completenessWeight;
           const weightedObjectivity = (objectivityScore / 100) * objectivityWeight;
           const weightedStructure = (structureScore / 100) * structureWeight;
 
-          score = Math.round(weightedFindingsSimilarity + weightedClarity + weightedObjectivity + weightedStructure);
+          score = Math.round(weightedCompleteness + weightedObjectivity + weightedStructure);
           score = Math.max(0, Math.min(100, score)); // Clamp 0-100
 
           // Prepare forensic rows for details
@@ -1002,25 +997,25 @@ const TakeExam = () => {
               },
               rubricBreakdown: {
                 completeness: {
-                  label: "Completeness (50% conclusion correctness + 50% keyword/concept matching)",
-                  weight: 70,
-                  earned: Math.round(findingsSimilarityScore),
-                  weighted: Math.round(weightedFindingsSimilarity),
+                  label: "Completeness (conclusion + keywords)",
+                  weight: completenessWeight,
+                  earned: Math.round(completenessScore),
+                  weighted: Math.round(weightedCompleteness),
                 },
                 objectivity: {
-                  label: "Objectivity (how objective (non‑opinionated) the language is)",
-                  weight: 15,
+                  label: "Objectivity (no subjective words)",
+                  weight: objectivityWeight,
                   earned: Math.round(objectivityScore),
                   weighted: Math.round(weightedObjectivity),
                 },
                 structure: {
-                  label: "Structure / Reasoning (does the answer show evidence)",
-                  weight: 15,
+                  label: "Structure / Reasoning (reasoning words)",
+                  weight: structureWeight,
                   earned: Math.round(structureScore),
                   weighted: Math.round(weightedStructure),
                 },
               },
-              assessmentMethod: "New Rubric-based scoring: Completeness (70%) + Objectivity (15%) + Structure/Reasoning (15%)",
+              assessmentMethod: `Rubric-based scoring: Completeness (${completenessWeight}%) + Objectivity (${objectivityWeight}%) + Structure (${structureWeight}%)`,
             };
 
             // Ensure answerToSave contains table answers, explanation, and conclusion
@@ -1474,24 +1469,16 @@ const TakeExam = () => {
               <div className="font-semibold mb-3 text-amber-900 flex items-center gap-2">🏆 Grading Rubric Weights</div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
-                  <div className="text-sm font-semibold text-slate-900">Findings Similarity</div>
-                  <div className="text-xs text-muted-foreground">(50% conclusion + 30% text)</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.findingsSimilarity ?? rubrics.accuracy ?? 80}%</div>
+                  <div className="text-sm font-semibold text-slate-900">Completeness (conclusion + keywords)</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.findingsSimilarity ?? 0}%</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
                   <div className="text-sm font-semibold text-slate-900">Structure / Reasoning</div>
-                  <div className="text-xs text-muted-foreground">(does the answer show evidence)</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.structure ?? rubrics.completeness ?? 10}%</div>
-                </div>
-                <div className="bg-white rounded-lg p-3 border border-amber-100">
-                  <div className="text-sm font-semibold text-slate-900">Clarity</div>
-                  <div className="text-xs text-muted-foreground">(readability)</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.clarity ?? 5}%</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.structure ?? 0}%</div>
                 </div>
                 <div className="bg-white rounded-lg p-3 border border-amber-100">
                   <div className="text-sm font-semibold text-slate-900">Objectivity</div>
-                  <div className="text-xs text-muted-foreground">(non-opinionated)</div>
-                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.objectivity ?? 5}%</div>
+                  <div className="text-lg font-bold text-amber-600 mt-1">{rubrics.objectivity ?? 0}%</div>
                 </div>
               </div>
             </div>

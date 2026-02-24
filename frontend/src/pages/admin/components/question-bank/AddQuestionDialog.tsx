@@ -248,6 +248,20 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         return;
       }
 
+      // ensure rubric percentages add up to 100
+      const totalRubrics =
+        Number(rubrics.findingsSimilarity || 0) +
+        Number(rubrics.objectivity || 0) +
+        Number(rubrics.structure || 0);
+      if (totalRubrics !== 100) {
+        toast({
+          title: "Validation Error",
+          description: "Rubric weights must total 100%.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Validate forensic conclusion and explanation
       if (explanation.trim() && !forensicConclusion) {
         toast({
@@ -326,6 +340,9 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       const allUrls = [...standardUrls, ...questionUrls];
       const combined = allUrls.length > 0 ? allUrls.join("|") : "";
       finalizeQuestionSubmission(combined);
+    } catch (err) {
+      console.error('[AddQuestionDialog] unexpected error:', err);
+      toast({ title: 'Error', description: 'Unable to add question.', variant: 'destructive' });
     } finally {
       setIsSaving(false);
     }
@@ -394,10 +411,12 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       keyword_pool_id: selectedKeywordPool?.id || null,
       selected_keywords: selectedKeywords.length > 0 ? selectedKeywords : null,
     };
+    console.log('[AddQuestionDialog] payload', payload);
 
     addQuestion(
       payload,
       () => {
+        setIsSaving(false);
         toast({
           title: "Success",
           description: "Question added successfully.",
@@ -407,6 +426,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         onQuestionAdded();
       },
       (err) => {
+        setIsSaving(false);
         toast({
           title: "Error",
           description: err.message || "Failed to add question.",
@@ -785,7 +805,11 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
           <div className="space-y-3 border-t pt-4">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
-              <div className="text-xs font-medium text-gray-600">Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
+              <div className={`text-xs font-medium ${
+                rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100
+                  ? 'text-gray-600'
+                  : 'text-red-600'
+              }`}>Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1.5 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -804,6 +828,11 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                 <div className="text-xs text-green-700">reasoning words</div>
               </div>
             </div>
+            {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100 && (
+              <div className="text-sm text-red-600">
+                Rubric weights must add up to exactly 100%.
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <Label htmlFor="explanation">Explanation/Findings</Label>
               <div className="flex items-center gap-2">
@@ -863,14 +892,16 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
           <Button
             variant="outline"
             onClick={() => {
-              resetForm();
-              onOpenChange(false);
+              if (!isSaving) {
+                resetForm();
+                onOpenChange(false);
+              }
             }}
             disabled={isSaving}
           >
             Cancel
           </Button>
-          <Button type="button" onClick={handleAddQuestion} disabled={isSaving}>
+          <Button type="button" onClick={handleAddQuestion} disabled={isSaving || (rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100)}>
             {isSaving ? "Saving..." : "Save Question"}
           </Button>
         </DialogFooter>

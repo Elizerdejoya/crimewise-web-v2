@@ -244,9 +244,11 @@ export async function updateQuestion(
 
     if (res.ok) {
       const updated = await res.json();
+      console.log('updateQuestion response', updated);
       onSuccess(updated);
     } else {
       const error = await res.json();
+      console.error('updateQuestion error body', error);
       onError(error);
     }
   } catch (err) {

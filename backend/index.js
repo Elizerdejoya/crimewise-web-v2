@@ -140,6 +140,23 @@ app.get("/api/monitor/api-keys", (req, res) => {
   }
 });
 
+// debug endpoint to inspect database connection and adapter
+app.get("/api/debug/db", async (req, res) => {
+  try {
+    const info = { adapter: db && db.client ? db.client.constructor.name : 'unknown' };
+    try {
+      // try a simple query to verify connectivity
+      const check = await db.sql`SELECT 1 as ok`;
+      info.queryResult = check && check[0] ? check[0] : null;
+    } catch (e) {
+      info.queryError = e && e.message ? e.message : e;
+    }
+    res.json(info);
+  } catch (err) {
+    res.status(500).json({ error: err && err.message ? err.message : err });
+  }
+});
+
 // AI Worker status endpoint
 app.get("/api/monitor/ai-worker", async (req, res) => {
   try {
