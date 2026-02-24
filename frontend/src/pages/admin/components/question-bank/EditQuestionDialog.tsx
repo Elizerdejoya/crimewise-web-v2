@@ -112,7 +112,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
               questionSpecimen: row.questionSpecimen || "",
               standardSpecimen: row.standardSpecimen || "",
               points: row.points || 1,
-              pointType: row.pointType || "each"
+              pointType: row.pointType || "" // preserve empty if not defined
             }));
             setForensicRows(rows);
             setExplanation("");
@@ -123,9 +123,9 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
               questionSpecimen: row.questionSpecimen || "",
               standardSpecimen: row.standardSpecimen || "",
               points: row.points || 1,
-              pointType: row.pointType || "each"
+              pointType: row.pointType || ""
             }));
-            setForensicRows(rows.length > 0 ? rows : [{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" }]);
+            setForensicRows(rows.length > 0 ? rows : [{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "" }]);
             
             // Set explanation and conclusion if they exist
             if (parsedAnswer.explanation) {
@@ -141,7 +141,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
         } catch (e) {
           console.error("Error parsing forensic answer:", e);
           // Fallback to an empty row if parsing fails
-          setForensicRows([{ questionSpecimen: "", standardSpecimen: "", points: 1 }]);
+          setForensicRows([{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "" }]);
           setExplanation("");
           setExplanationPoints(0);
         }
@@ -208,15 +208,19 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   
   // Add new forensic row
   const handleAddForensicRow = () => {
-    // Use the points value from the last row when adding a new one
+    // Use the points value (and pointType) from the last row when adding a new one
     const lastRowPoints = forensicRows.length > 0 
       ? forensicRows[forensicRows.length - 1].points 
       : 1;
-      
+    const lastRowPointType = forensicRows.length > 0 
+      ? forensicRows[forensicRows.length - 1].pointType || "" 
+      : "";
+
     setForensicRows(rows => [...rows, { 
       questionSpecimen: "", 
       standardSpecimen: "", 
-      points: lastRowPoints 
+      points: lastRowPoints,
+      pointType: lastRowPointType
     }]);
   };
   
@@ -310,12 +314,17 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
     if (editForm.type === "forensic") {
       // Create the answer data with specimens and explanation
       const answerData = {
-        specimens: forensicRows.map(row => ({
-          questionSpecimen: row.questionSpecimen,
-          standardSpecimen: row.standardSpecimen,
-          points: Number(row.points) || 1,
-          pointType: row.pointType || "each"
-        })),
+        specimens: forensicRows.map(row => {
+          const specimen: any = {
+            questionSpecimen: row.questionSpecimen,
+            standardSpecimen: row.standardSpecimen,
+            points: Number(row.points) || 1,
+          };
+          if (row.pointType) {
+            specimen.pointType = row.pointType;
+          }
+          return specimen;
+        }),
         explanation: {
           text: explanation,
           points: Number(explanationPoints) || 0,
@@ -683,7 +692,8 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                 <div className="text-sm text-muted-foreground">
                   Total Points: {forensicRows.reduce((sum, row) => {
                     const rowPoints = Number(row.points) || 1;
-                    const pointType = row.pointType || "both";
+                    const pointType = row.pointType || ""; // treat blank as both for calculations
+
                     if (pointType === "each") {
                       return sum + (rowPoints * 2); // Multiply by 2 for typical comparison (question vs standard)
                     } else {
@@ -743,10 +753,13 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                         <td className="border p-2">
                           <select
                             className="w-full border px-2 py-1 text-xs"
-                            value={row.pointType || "both"}
+                            value={row.pointType || ""}
                             onChange={e => handleForensicRowChange(idx, "pointType", e.target.value)}
                             title="each = points per correct answer, both = points only if all answers correct"
                           >
+                            <option value="" disabled>
+                              Point type
+                            </option>
                             <option value="each">for each correct</option>
                             <option value="both">if both correct</option>
                           </select>

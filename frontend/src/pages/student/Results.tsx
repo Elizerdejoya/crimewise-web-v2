@@ -45,6 +45,9 @@ const Results = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedAiGrade, setSelectedAiGrade] = useState<any>(null);
+  // cache questions keyed by exam_id so details view can fall back to question metadata
+  const [questionCache, setQuestionCache] = useState<Record<string, any>>({});
+
   // Default sort: most recent submissions first (date desc)
   const [sortConfig, setSortConfig] = useState<{
     key: string;
@@ -107,6 +110,31 @@ const Results = () => {
   useEffect(() => {
     fetchStudentResults();
   }, []);
+
+  // when a result is selected, ensure we have the underlying question cached
+  useEffect(() => {
+    if (!selectedResult) return;
+    const examId = selectedResult.exam_id || selectedResult.examId;
+    if (!examId) return;
+    if (questionCache[String(examId)]) return; // already fetched
+
+    // fetch exam record then question
+    fetch(`${API_BASE_URL}/api/exams/${examId}`, { headers: getAuthHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(exam => {
+        if (exam && exam.question_id) {
+          return fetch(`${API_BASE_URL}/api/questions/${exam.question_id}`, { headers: getAuthHeaders() })
+            .then(r => r.ok ? r.json() : null)
+            .then(q => {
+              if (q) {
+                setQuestionCache(prev => ({ ...prev, [String(examId)]: q }));
+              }
+            })
+            .catch(err => console.error("Failed to fetch question", err));
+        }
+      })
+      .catch(err => console.error("Failed to fetch exam for cache", err));
+  }, [selectedResult, questionCache]);
 
   // Poll for pending AI grades every 5 seconds to show updates as they complete
   useEffect(() => {
@@ -1217,42 +1245,94 @@ const Results = () => {
                                     )}
 
                                     {(() => {
-                                      let parsedAnswer = [];
-                                      let rowDetails = [];
-                                      let columns = [];
+                                      // specimens holds the original question rows (with pointType) from various sources
+                                      let parsedAnswer: any[] = [];
+                                      let rowDetails: any[] = [];
+                                      let columns: string[] = [];
+                                      let specimens: any[] = [];
+                                      let specimenSource = '';
 
                                       try {
-                                        // Parse answer
-                                        if (result.answer) {
-                                          const rawAnswer = typeof result.answer === 'string' 
-                                            ? JSON.parse(result.answer)
-                                            : result.answer;
-                                          parsedAnswer = rawAnswer.tableAnswers || [];
-                                          console.log("Parsed answer from details:", parsedAnswer);
-                                        }
-
-                                        // Extract row details and column information from the details field
+                                        // parse details first; it may already contain specimens and/or scoring info
                                         if (result.details) {
                                           const detailsObj = typeof result.details === 'string'
                                             ? JSON.parse(result.details)
                                             : result.details;
-                                          
+
+                                          if (detailsObj.specimens && Array.isArray(detailsObj.specimens)) {
+                                            specimens = detailsObj.specimens;
+                                            specimenSource = 'details';
+                                            console.log('Specimens from details:', specimens);
+                                          }
+
                                           if (detailsObj.rowDetails && Array.isArray(detailsObj.rowDetails)) {
                                             rowDetails = detailsObj.rowDetails;
-                                            console.log("Extracted rowDetails from details field:", rowDetails);
-                                            
-                                            // Get columns from the first row's columnScores
+                                            console.log('Extracted rowDetails from details field:', rowDetails);
+
                                             if (rowDetails.length > 0 && rowDetails[0].columnScores) {
                                               columns = Object.keys(rowDetails[0].columnScores);
-                                              console.log("Extracted columns:", columns);
+                                              console.log('Extracted columns from rowDetails:', columns);
+                                            }
+                                          }
+                                        }
+
+                                        // parse raw answer (student input); may also hold specimens structure for older submissions
+                                        if (result.answer) {
+                                          const rawAnswer = typeof result.answer === 'string'
+                                            ? JSON.parse(result.answer)
+                                            : result.answer;
+
+                                          // tableAnswers are what the student filled in
+                                          parsedAnswer = rawAnswer.tableAnswers || [];
+                                          console.log('Parsed answer from details:', parsedAnswer);
+
+                                          // if we haven't yet found specimens, look here
+                                          if (specimens.length === 0) {
+                                            if (rawAnswer.specimens && Array.isArray(rawAnswer.specimens)) {
+                                              specimens = rawAnswer.specimens;
+                                              specimenSource = 'answer-specimens';
+                                              console.log('Specimens from answer JSON:', specimens);
+                                            } else if (Array.isArray(rawAnswer)) {
+                                              specimens = rawAnswer;
+                                              specimenSource = 'answer-array';
+                                              console.log('Specimens from answer array:', specimens);
+                                            }
+                                          }
+                                        }
+
+                                        // if we still don't have specimens or none of them include a pointType, try to use cached question
+                                        if ((specimens.length === 0 || !specimens.some(r => r.pointType)) && selectedResult) {
+                                          const examId = selectedResult.exam_id || selectedResult.examId;
+                                          const cachedQ = questionCache[String(examId)];
+                                          if (cachedQ && cachedQ.answer) {
+                                            try {
+                                              const qParsed = typeof cachedQ.answer === 'string' ? JSON.parse(cachedQ.answer) : cachedQ.answer;
+                                              if (qParsed.specimens && Array.isArray(qParsed.specimens)) {
+                                                specimens = qParsed.specimens;
+                                                specimenSource = 'cached-question';
+                                                console.log('Specimens from cached question:', specimens);
+                                              } else if (Array.isArray(qParsed)) {
+                                                specimens = qParsed;
+                                                specimenSource = 'cached-question-array';
+                                                console.log('Specimens from cached question array:', specimens);
+                                              }
+                                            } catch (err) {
+                                              console.error('Error parsing cached question answer:', err);
                                             }
                                           }
                                         }
                                       } catch (e) {
-                                        console.error("Error parsing results:", e);
+                                        console.error('Error parsing results:', e);
                                         parsedAnswer = [];
                                         rowDetails = [];
                                         columns = [];
+                                        specimens = [];
+                                      }
+
+                                      // derive columns from specimens if we haven't gotten them already
+                                      if (columns.length === 0 && specimens.length > 0) {
+                                        columns = Object.keys(specimens[0]).filter(k => !['points', 'pointType'].includes(k));
+                                        console.log('Derived columns from specimens (' + specimenSource + '):', columns);
                                       }
 
                                       // Always render answer table even if explanation/conclusion are missing
@@ -1267,7 +1347,7 @@ const Results = () => {
                                                   {columns.length > 0 ? columns.map((col, idx) => (
                                                     <TableHead key={idx} className="min-w-[120px] whitespace-nowrap">{col}</TableHead>
                                                   )) : (
-                                                    // If we don't have columns from details, try to derive from parsedAnswer later
+                                                    // No columns, show generic header
                                                     <TableHead className="min-w-[120px] whitespace-nowrap">Answer</TableHead>
                                                   )}
                                                   <TableHead className="min-w-[100px] whitespace-nowrap">Result/Points</TableHead>
@@ -1277,13 +1357,25 @@ const Results = () => {
                                               </TableHeader>
                                               <TableBody>
                                                 {(() => {
-                                                  // If we have rowDetails, render them; else if parsedAnswer exists, render parsed rows; else render placeholder rows
+                                                  // If we have rowDetails, render those first (scored rows)
                                                   if (rowDetails && rowDetails.length > 0) {
                                                     return rowDetails.map((row: any, rowIdx: number) => {
                                                       const rowCorrectCount = (row.columnScores && Object.values(row.columnScores as any).filter((col: any) => col.isExactMatch).length) || 0;
                                                       const rowTotalCount = columns.length || 0;
                                                       const allCorrectForRow = row.correct || false;
-                                                      const rowPoints = row.possiblePoints || 1;
+                                                      const specimen = specimens[rowIdx] || {};
+                                                      const pointsResolved = Number(row.possiblePoints ?? row.pointsValue ?? row.points ?? specimen.points ?? 1);
+                                                      const pointTypeResolved = (row.pointType ?? row.point_type ?? specimen.pointType ?? specimen.point_type ?? specimen.pointtype ?? '').toString().toLowerCase();
+
+                                                      let earnedForRow = 0;
+                                                      let possibleForRow = 0;
+                                                      if (pointTypeResolved === 'each') {
+                                                        earnedForRow = rowCorrectCount * pointsResolved;
+                                                        possibleForRow = rowTotalCount * pointsResolved;
+                                                      } else {
+                                                        earnedForRow = allCorrectForRow ? pointsResolved : 0;
+                                                        possibleForRow = pointsResolved;
+                                                      }
 
                                                       return (
                                                         <TableRow key={rowIdx}>
@@ -1324,29 +1416,36 @@ const Results = () => {
                                                           })}
                                                           <TableCell className="min-w-[100px]">
                                                             <div className="flex flex-col space-y-1">
-                                                              <span className={`text-sm font-semibold ${allCorrectForRow ? "text-green-600" : "text-red-600"}`}>
+                                                              <span className={`text-sm font-semibold ${earnedForRow > 0 ? "text-green-600" : "text-red-600"}`}>
                                                                 {rowCorrectCount}/{rowTotalCount}
                                                               </span>
                                                               <span className="text-xs text-muted-foreground">
-                                                                {allCorrectForRow ? `+${rowPoints} pts` : `0/${rowPoints} pts`}
+                                                                {`+${earnedForRow}/${possibleForRow} pts`}
                                                               </span>
                                                             </div>
                                                           </TableCell>
                                                           <TableCell className="min-w-[100px] text-center">
-                                                            <span className="text-sm font-medium">{row.pointsValue || 1}</span>
+                                                            <span className="text-sm font-medium">{pointsResolved}</span>
                                                           </TableCell>
                                                           <TableCell className="min-w-[100px] text-center">
-                                                            <span className="text-sm">{row.pointType === "each" ? "for each correct" : "if both correct"}</span>
+                                                            <span className="text-sm">{pointTypeResolved === 'each' ? 'for each correct' : (pointTypeResolved === 'both' || pointTypeResolved === 'both_correct' ? 'if both correct' : (pointTypeResolved || '-'))}</span>
                                                           </TableCell>
                                                         </TableRow>
                                                       );
                                                     });
                                                   }
 
-                                                  // If parsedAnswer exists, try to render its rows
-                                                  if (parsedAnswer && parsedAnswer.length > 0) {
-                                                    return parsedAnswer.map((prow: any, idx: number) => {
-                                                      const cols = columns.length > 0 ? columns : Object.keys(prow);
+                                                  // If parsed row details exist, they were already rendered above.
+                                                  // Otherwise, attempt to render original specimen rows (may come from details, answer, or cached question).
+                                                  if (specimens && specimens.length > 0) {
+                                                    return specimens.map((prow: any, idx: number) => {
+                                                      const cols = columns.length > 0 ? columns : Object.keys(prow).filter(k => !['points','pointType'].includes(k));
+                                                      const ptRaw = prow.pointType || '';
+                                                      let ptDisplay = '-';
+                                                      if (ptRaw === 'each') ptDisplay = 'for each correct';
+                                                      else if (ptRaw === 'both') ptDisplay = 'if both correct';
+                                                      else if (ptRaw) ptDisplay = ptRaw;
+
                                                       return (
                                                         <TableRow key={idx}>
                                                           <TableCell className="sticky left-0 bg-background z-10 font-medium">{idx + 1}</TableCell>
@@ -1354,8 +1453,8 @@ const Results = () => {
                                                             <TableCell key={cidx} className="min-w-[120px]"><span className="text-sm break-words">{prow[col] ?? '-'}</span></TableCell>
                                                           ))}
                                                           <TableCell className="min-w-[100px]"><span className="text-sm text-muted-foreground">-</span></TableCell>
-                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">-</span></TableCell>
-                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">-</span></TableCell>
+                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">{prow.points ?? '-'}</span></TableCell>
+                                                          <TableCell className="min-w-[100px] text-center"><span className="text-sm">{ptDisplay}</span></TableCell>
                                                         </TableRow>
                                                       );
                                                     });
