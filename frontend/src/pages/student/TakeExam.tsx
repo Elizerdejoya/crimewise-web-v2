@@ -29,7 +29,7 @@ const getAuthHeaders = () => {
 };
 
 // In-place Image Viewer with Pan and Zoom (no fullscreen)
-const ImageFullScreen = ({ src, alt }: { src: string; alt: string }) => {
+const ImageFullScreen = ({ src, alt, label }: { src: string; alt: string; label?: string }) => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -115,7 +115,7 @@ const ImageFullScreen = ({ src, alt }: { src: string; alt: string }) => {
       />
 
       {/* Inline zoom controls */}
-      <div className="absolute top-2 right-2 bg-white/90 rounded-md shadow p-1 flex gap-1 z-10">
+      <div className="absolute top-2 right-2 bg-white/90 rounded-md shadow p-1 flex items-center gap-1 z-10">
         <Button variant="ghost" size="icon" onClick={handleZoomIn} className="h-8 w-8">
           <ZoomIn className="h-4 w-4" />
         </Button>
@@ -126,6 +126,7 @@ const ImageFullScreen = ({ src, alt }: { src: string; alt: string }) => {
         <Button variant="ghost" size="icon" onClick={resetView} className="h-8 w-8">
           <span className="text-xs font-bold">R</span>
         </Button>
+        {label && <div className="text-xs font-medium text-gray-700 ml-2">{label}</div>}
       </div>
     </div>
   );
@@ -139,7 +140,10 @@ const MultiImageDisplay = ({
   questionImages: string[];
   standardImages: string[];
 }) => {
-  // indices into each group's array
+  // layout mode: false = paginated (prev/next buttons), true = scrollable
+  const [useScrollMode, setUseScrollMode] = useState(false);
+
+  // indices into each group's array (used only in paginated mode)
   const [leftStdIndex, setLeftStdIndex] = useState(0);
   const [rightQIndex, setRightQIndex] = useState(0);
 
@@ -158,6 +162,17 @@ const MultiImageDisplay = ({
 
   return (
     <div className="mb-12">
+      {/* view-mode toggle */}
+      <div className="flex justify-end mb-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setUseScrollMode((v) => !v)}
+        >
+          {useScrollMode ? "Switch to paginated" : "Switch to vertical scroll"}
+        </Button>
+      </div>
+
       {/* Thumbnails for both groups (standards first then questions) */}
       <div className="flex gap-2 mb-4 overflow-x-auto w-full items-end">
         {standardImages.map((img, idx) => (
@@ -183,31 +198,59 @@ const MultiImageDisplay = ({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="flex flex-col items-center">
-          <div className="text-xs font-medium mb-1">{stdCount > 0 ? `SS${leftStdIndex + 1}` : `QS1`}</div>
-          <div className="w-full border rounded-md p-2">
-            {leftSrc ? <ImageFullScreen src={leftSrc} alt={`left-img`} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
+      {useScrollMode ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* scrollable panels for each side (vertical list) */}
+          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px]">
+            {standardImages.length > 0 ? (
+              standardImages.map((img, idx) => (
+                <div key={`std-scroll-${idx}`} className="w-full">
+                  <ImageFullScreen src={img} alt={`std-scroll-${idx}`} label={`SS${idx+1}`} />
+                </div>
+              ))
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-500">No image</div>
+            )}
           </div>
-
-          <div className="flex gap-2 mt-3">
-            <Button onClick={prevStd} size="sm" variant="secondary" disabled={leftStdIndex <= 0}>Prev</Button>
-            <Button onClick={nextStd} size="sm" variant="secondary" disabled={leftStdIndex >= Math.max(0, stdCount - 1)}>Next</Button>
+          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px]">
+            {questionImages.length > 0 ? (
+              questionImages.map((img, idx) => (
+                <div key={`q-scroll-${idx}`} className="w-full">
+                  <ImageFullScreen src={img} alt={`q-scroll-${idx}`} label={`QS${idx+1}`} />
+                </div>
+              ))
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-500">No image</div>
+            )}
           </div>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col items-center">
+            <div className="text-xs font-medium mb-1">{stdCount > 0 ? `SS${leftStdIndex + 1}` : `QS1`}</div>
+            <div className="w-full border rounded-md p-2">
+              {leftSrc ? <ImageFullScreen src={leftSrc} alt={`left-img`} label={stdCount>0?`SS${leftStdIndex+1}`:'QP'} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
+            </div>
 
-        <div className="flex flex-col items-center">
-          <div className="text-xs font-medium mb-1">{qCount > 0 ? `QS${rightQIndex + 1}` : `SS1`}</div>
-          <div className="w-full border rounded-md p-2">
-            {rightSrc ? <ImageFullScreen src={rightSrc} alt={`right-img`} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
+            <div className="flex gap-2 mt-3">
+              <Button onClick={prevStd} size="sm" variant="secondary" disabled={leftStdIndex <= 0}>Prev</Button>
+              <Button onClick={nextStd} size="sm" variant="secondary" disabled={leftStdIndex >= Math.max(0, stdCount - 1)}>Next</Button>
+            </div>
           </div>
 
-          <div className="flex gap-2 mt-3">
-            <Button onClick={prevQ} size="sm" variant="secondary" disabled={rightQIndex <= 0}>Prev</Button>
-            <Button onClick={nextQ} size="sm" variant="secondary" disabled={rightQIndex >= Math.max(0, qCount - 1)}>Next</Button>
+          <div className="flex flex-col items-center">
+            <div className="text-xs font-medium mb-1">{qCount > 0 ? `QS${rightQIndex + 1}` : `SS1`}</div>
+            <div className="w-full border rounded-md p-2">
+              {rightSrc ? <ImageFullScreen src={rightSrc} alt={`right-img`} label={qCount>0?`QS${rightQIndex+1}`:'SP'} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
+            </div>
+
+            <div className="flex gap-2 mt-3">
+              <Button onClick={prevQ} size="sm" variant="secondary" disabled={rightQIndex <= 0}>Prev</Button>
+              <Button onClick={nextQ} size="sm" variant="secondary" disabled={rightQIndex >= Math.max(0, qCount - 1)}>Next</Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -1269,7 +1312,11 @@ const TakeExam = () => {
             <MultiImageDisplay questionImages={questionImages} standardImages={standardImages} />
           ) : (
             // Single image fallback (either a questioned or standard image)
-            <ImageFullScreen src={questionImages[0] || standardImages[0] || question.image} alt="Forensic Document" />
+            <ImageFullScreen
+              src={questionImages[0] || standardImages[0] || question.image}
+              alt="Forensic Document"
+              label={questionImages.length>0?`QS1`:`SS1`}
+            />
           )}
         </div>
       )}
