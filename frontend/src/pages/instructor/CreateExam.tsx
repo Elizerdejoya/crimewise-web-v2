@@ -71,7 +71,8 @@ const CreateExam = () => {
 
     const instructorId = currentUser.id;
 
-    // Fetch assigned courses
+    // Fetch assigned courses relations and merge with full course details so
+    // the dropdown only shows courses this instructor has been assigned to.
     fetch(`${API_BASE_URL}/api/relations/instructor-course`, {
       headers: getAuthHeaders(),
     })
@@ -86,7 +87,34 @@ const CreateExam = () => {
         }
         return res.json();
       })
-      .then(data => setCourses(data.filter((c: any) => c.instructor_id === instructorId)))
+      .then(async (data) => {
+        try {
+          const assigned = Array.isArray(data)
+            ? data.filter((c: any) => c.instructor_id === instructorId)
+            : [];
+
+          // grab full course objects so we can show real names (and any other
+          // useful info such as student count if needed).
+          const coursesResp = await fetch(`${API_BASE_URL}/api/courses`, {
+            headers: getAuthHeaders(),
+          });
+          const allCourses = coursesResp.ok ? await coursesResp.json() : [];
+
+          const merged = assigned.map((rel: any) => {
+            const courseDetail = (allCourses || []).find(
+              (c: any) => String(c.id) === String(rel.course_id)
+            );
+            return courseDetail
+              ? { ...courseDetail, course_id: rel.course_id }
+              : rel;
+          });
+
+          setCourses(merged);
+        } catch (err) {
+          console.error('Error merging course details:', err);
+          setCourses([]);
+        }
+      })
       .catch(err => console.error('Error fetching courses:', err));
 
     // Fetch classes taught by instructor
@@ -250,11 +278,17 @@ const CreateExam = () => {
                       <SelectValue placeholder="Select course" />
                     </SelectTrigger>
                     <SelectContent>
-                      {courses.map((c) => (
-                        <SelectItem key={c.course_id} value={String(c.course_id)}>
-                          {c.course || c.course_name || c.id}
-                        </SelectItem>
-                      ))}
+                      {courses.map((c) => {
+                        const id = c.course_id || c.id;
+                        const label =
+                          c.name || c.course || c.course_name || id;
+
+                        return (
+                          <SelectItem key={id} value={String(id)}>
+                            {label}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
