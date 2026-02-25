@@ -2449,22 +2449,43 @@ const ExamResults = () => {
 
                 <div>
                   <h4 className="font-medium">Most Common Errors</h4>
-                  <div className="text-sm">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Cells are labeled row:column (e.g. 1:A). The table below shows the correct
+                    value alongside the wrong answer students submitted most often,
+                    with a count of occurrences.
+                  </p>
+                  <div className="text-sm overflow-x-auto">
                     {(() => {
                       try {
                         const summary = commonErrorsMap[String(viewErrorsExam.id)] || [];
-                        if (!summary || summary.length === 0) return <div className="text-xs text-muted-foreground">No common errors found</div>;
+                        if (!summary || summary.length === 0)
+                          return <div className="text-xs text-muted-foreground">No common errors found</div>;
+
                         return (
-                          <div className="space-y-2">
-                            {summary.map((s, i) => (
-                              <div key={i} className="grid grid-cols-12 gap-3 items-start">
-                                <div className="col-span-2 text-xs font-medium break-words">{s.cell}</div>
-                                <div className="col-span-10 text-sm break-words">
-                                  Correct: <span className="font-semibold break-words">{s.correct}</span> — Common: <span className="font-semibold break-words">{s.wrong}</span> <span className="text-xs text-muted-foreground">({s.count})</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                          <table className="w-full text-sm table-auto border">
+                            <thead>
+                              <tr className="bg-muted">
+                                <th className="p-2 border text-left sticky top-0 bg-muted">Cell</th>
+                                <th className="p-2 border text-left sticky top-0 bg-muted">Correct Answer</th>
+                                <th className="p-2 border text-left sticky top-0 bg-muted">Most Common Wrong</th>
+                                <th className="p-2 border text-center sticky top-0 bg-muted">Count</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {summary.map((s, i) => (
+                                <tr key={i} className={`border-t ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  <td className="p-2 border align-top font-medium">{s.cell}</td>
+                                  <td className="p-2 border align-top break-words">{s.correct}</td>
+                                  <td className="p-2 border align-top break-words">{s.wrong}</td>
+                                  <td className="p-2 border text-center align-top">
+                                    <span className="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                                      {s.count}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         );
                       } catch (e) {
                         return <div className="text-xs text-muted-foreground">Unable to load common errors</div>;
