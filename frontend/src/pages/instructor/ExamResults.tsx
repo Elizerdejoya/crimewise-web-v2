@@ -1392,7 +1392,9 @@ const ExamResults = () => {
     }
 
     // Open the print/details window synchronously so browsers treat it as a user gesture
-    const printWindow = window.open('', '', 'height=800,width=1200');
+    // attempt to open a full-screen popup (width/height matching screen)
+    const features = `height=${window.screen.height},width=${window.screen.width},top=0,left=0,scrollbars=yes,fullscreen=yes`;
+    const printWindow = window.open('', '', features);
     if (!printWindow) {
       toast({
         title: "Error",
@@ -1400,6 +1402,13 @@ const ExamResults = () => {
         variant: "destructive"
       });
       return;
+    }
+    // make a best-effort resize/move in case browser ignores initial features
+    try {
+      printWindow.moveTo(0, 0);
+      printWindow.resizeTo(window.screen.width, window.screen.height);
+    } catch (e) {
+      // ignore if not allowed by browser
     }
 
     // Immediately write a minimal loading page so the popup is populated synchronously
