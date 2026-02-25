@@ -1077,24 +1077,29 @@ const ExamResults = () => {
   };
 
   // Handle update exam
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   const handleUpdateExam = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!editingExam) return;
 
     try {
-      // Ensure we send all required fields the backend validates (fall back to existing exam values)
       const existingExam = results.find(r => r.id === editingExam.id) || {};
+      // prepare payload: keep all original required fields, only change name
       const payload: any = {
-        name: editingExam.name ?? editingExam.examName ?? existingExam.name ?? existingExam.examName,
-        course_id: editingExam.course_id ?? editingExam.course ?? existingExam.course_id ?? existingExam.course,
-        class_id: editingExam.class_id ?? editingExam.class ?? existingExam.class_id ?? existingExam.class,
-        instructor_id: editingExam.instructor_id ?? editingExam.instructorId ?? existingExam.instructor_id ?? existingExam.instructor_id ?? existingExam.instructor,
-        question_id: editingExam.question_id ?? editingExam.questionId ?? existingExam.question_id ?? existingExam.question_id ?? existingExam.question,
-        start: editingExam.start ?? existingExam.start ?? null,
-        end: editingExam.end ?? existingExam.end ?? null,
-        duration: editingExam.duration ?? existingExam.duration ?? null,
+        name: editingExam.name ?? editingExam.examName ?? '',
+        // preserve other attributes so backend validation passes
+        course_id: existingExam.course_id ?? existingExam.course ?? null,
+        class_id: existingExam.class_id ?? existingExam.class ?? null,
+        instructor_id: existingExam.instructor_id ?? existingExam.instructor ?? null,
+        question_id: existingExam.question_id ?? existingExam.question ?? null,
+        start: existingExam.start ?? null,
+        end: existingExam.end ?? null,
+        duration: existingExam.duration ?? null,
+        status: existingExam.status ?? null,
       };
+      setIsSavingEdit(true);
 
       const response = await fetch(`${API_BASE_URL}/api/exams/${editingExam.id}`, {
         method: "PUT",
@@ -1137,6 +1142,8 @@ const ExamResults = () => {
       setEditingExam(null);
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to update exam", variant: "destructive" });
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -2285,41 +2292,16 @@ const ExamResults = () => {
                       className="col-span-3"
                     />
                   </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="exam-duration" className="text-right">
-                      Duration (min)
-                    </Label>
-                    <Input
-                      id="exam-duration"
-                      type="number"
-                      value={editingExam.duration || ""}
-                      onChange={(e) => setEditingExam({ ...editingExam, duration: e.target.value })}
-                      className="col-span-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="exam-status" className="text-right">
-                      Status
-                    </Label>
-                    <select
-                      id="exam-status"
-                      value={editingExam.status || "active"}
-                      onChange={(e) => setEditingExam({ ...editingExam, status: e.target.value })}
-                      className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                  </div>
                 </div>
                 <DialogFooter>
                   <DialogClose asChild>
-                    <Button type="button" variant="outline">
+                    <Button type="button" variant="outline" disabled={isSavingEdit}>
                       Cancel
                     </Button>
                   </DialogClose>
-                  <Button type="submit">Save Changes</Button>
+                  <Button type="submit" disabled={isSavingEdit}>
+                    {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
