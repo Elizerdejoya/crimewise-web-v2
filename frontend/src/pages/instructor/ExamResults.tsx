@@ -1811,7 +1811,10 @@ const ExamResults = () => {
     const isAsc = isSorted && sortDirection === "asc";
     const isDesc = isSorted && sortDirection === "desc";
     return (
-      <TableHead onClick={() => handleSort(column)} className={`cursor-pointer ${className || ''}`}>
+      <TableHead
+        onClick={() => handleSort(column)}
+        className={`cursor-pointer bg-gray-100 dark:bg-gray-800 text-xs uppercase tracking-wide font-semibold ${className || ''}`}
+      >
         <div className="flex items-center gap-2">
           <span>{children}</span>
           {isSorted ? (
@@ -2027,17 +2030,16 @@ const ExamResults = () => {
             <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40px]">
+                    <TableHead className="w-[40px] bg-gray-100 dark:bg-gray-800">
                       <input className="accent-neutral-400" type="checkbox" checked={paginatedResults.length>0 && paginatedResults.every(r=>selectedIds.includes(r.id))} onChange={toggleSelectAll} />
                     </TableHead>
                     <SortableHeader column="name">Exam Name</SortableHeader>
                     <SortableHeader column="class">Class</SortableHeader>
                     <SortableHeader column="course">Course</SortableHeader>
                     <SortableHeader column="date">Date</SortableHeader>
-                    <SortableHeader column="participants" className="hidden md:table-cell">Participants</SortableHeader>
                     <SortableHeader column="avgTable" className="hidden lg:table-cell">Avg Table</SortableHeader>
                     <SortableHeader column="avgFindings" className="hidden lg:table-cell">Avg Findings</SortableHeader>
-                    <TableHead className="text-center">Action</TableHead>
+                    <TableHead className="text-center bg-gray-100 dark:bg-gray-800">Action</TableHead>
                   </TableRow>
                 </TableHeader>
               <TableBody>
@@ -2073,22 +2075,6 @@ const ExamResults = () => {
                       <TableCell>{getClassName(exam) || exam.class || exam.class_id || '-'}</TableCell>
                       <TableCell>{getCourseName(exam) || exam.course || exam.course_name || exam.course_id || '-'}</TableCell>
                       <TableCell>{exam.end ? `${formatDate(exam.start || exam.date)} - ${formatDate(exam.end)}` : formatDate(exam.start || exam.date)}</TableCell>
-                      <TableCell className="hidden md:table-cell">{(() => {
-                        try {
-                          const resArr = Array.isArray(exam.results) ? exam.results : [];
-                          if (resArr.length > 0) {
-                            const seen = new Set<string>();
-                            resArr.forEach((r: any) => {
-                              const sid = r.student_id ?? r.studentId ?? r.student ?? `${r.first_name || ''}_${r.last_name || ''}`;
-                              if (sid !== undefined && sid !== null) seen.add(String(sid));
-                            });
-                            return seen.size;
-                          }
-                        } catch (e) {
-                          // ignore and fallback
-                        }
-                        return Number(exam.participants) || 0;
-                      })()}</TableCell>
                       {/* Avg Table Score */}
                       <TableCell className="hidden md:table-cell">{(() => {
                         try {
