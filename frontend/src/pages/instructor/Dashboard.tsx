@@ -436,7 +436,31 @@ const InstructorDashboard = () => {
   };
 
   // Get top performing students across all exams (both scores combined)
+  // helpers borrowed from ExamResults.tsx to resolve course/class names
+  const getCourseName = (exam: any) => {
+    const cid = exam?.course || exam?.course_id;
+    if (!cid) return exam?.course_name || '';
+    const found = courses.find(
+      (c: any) => String(c.id) === String(cid) || String(c.course_id) === String(cid) || String(c.name) === String(cid)
+    );
+    return found ? (found.name || found.course || String(cid)) : (exam.course_name || String(cid));
+  };
+  const getClassName = (exam: any) => {
+    const cls = exam?.class || exam?.class_id;
+    if (!cls) return '';
+    const found = classes.find(
+      (c: any) => String(c.id) === String(cls) || String(c.class_id) === String(cls) || String(c.name) === String(cls)
+    );
+    return found ? (found.name || String(cls)) : String(cls);
+  };
+
   const getTopPerformers = () => {
+    // build map of exam metadata so we can look up course/class info later
+    const examMap: Record<string, any> = {};
+    recentExams.forEach((e: any) => {
+      if (e && e.id != null) examMap[e.id] = e;
+    });
+
     // Helper function to extract findings percent (same as in getExamPerformance)
     const getFindingsPercent = (res: any) => {
       try {
@@ -468,7 +492,7 @@ const InstructorDashboard = () => {
       }
     };
 
-    const studentScores: Record<string, { name: string; tableScores: number[]; findingsScores: number[]; examCount: number }> = {};
+    const studentScores: Record<string, { name: string; tableScores: number[]; findingsScores: number[]; examCount: number; courses: Set<string>; classes: Set<string> }> = {};
 
     Object.values(examResults).forEach((results: any[]) => {
       (results || []).forEach((result: any) => {
@@ -511,7 +535,7 @@ const InstructorDashboard = () => {
         }
 
         if (!studentScores[studentId]) {
-          studentScores[studentId] = { name: studentName, tableScores: [], findingsScores: [], examCount: 0 };
+          studentScores[studentId] = { name: studentName, tableScores: [], findingsScores: [], examCount: 0, courses: new Set(), classes: new Set() };
         }
         if (!isNaN(tableScore) && tableScore !== null && tableScore !== undefined) {
           studentScores[studentId].tableScores.push(tableScore);
@@ -521,6 +545,14 @@ const InstructorDashboard = () => {
           studentScores[studentId].findingsScores.push(findingsScore);
         }
         studentScores[studentId].examCount += 1;
+        // if we have exam metadata, record its course/class (resolve names)
+        const exam = examMap[result.exam_id] || examMap[result.examId];
+        if (exam) {
+          const cn = getCourseName(exam);
+          const cl = getClassName(exam);
+          if (cn) studentScores[studentId].courses.add(cn);
+          if (cl) studentScores[studentId].classes.add(cl);
+        }
       });
     });
 
@@ -535,6 +567,8 @@ const InstructorDashboard = () => {
           findingsAvg,
           avgScore: combinedAvg,
           examsCompleted: data.examCount,
+          courses: Array.from(data.courses),
+          classes: Array.from(data.classes),
         };
       })
       .sort((a, b) => b.avgScore - a.avgScore)
@@ -768,7 +802,7 @@ const InstructorDashboard = () => {
                       margin={{ top: 28 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
+                      <XAxis dataKey="name" />
                       <YAxis />
                       <RechartsTooltip content={<ChartTooltipContent />} />
                       <Bar dataKey="participants" fill="var(--color-participants)" onClick={(d:any) => { const v = d?.value ?? d?.payload?.participants; toast({ title: 'Participants', description: String(v) }); }}>
@@ -807,7 +841,19 @@ const InstructorDashboard = () => {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm truncate">{student.name}</p>
-                          <p className="text-xs text-muted-foreground">{student.examsCompleted} exams completed</p>
+                          <p className="text-xs text-muted-foreground">
+                            {student.examsCompleted} exams completed
+                          </p>
+                          {(student.courses?.length || 0) > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Course: {student.courses.join(', ')}
+                            </p>
+                          )}
+                          {(student.classes?.length || 0) > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Class: {student.classes.join(', ')}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 ml-2">
@@ -835,15 +881,15 @@ const InstructorDashboard = () => {
                 Exam Performance Summary
               </CardTitle>
               <CardDescription className="text-xs mt-2">
-                Average scores, pass rates, and completion metrics for your 5 most recent exams
+                Average scores, pass rates, and completion metrics for your 3 most recent exams
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {recentExams.slice(0, 5).length === 0 ? (
+              {recentExams.slice(0, 3).length === 0 ? (
                 <div className="text-sm text-muted-foreground text-center py-8">No recent exams</div>
               ) : (
                 <div className="space-y-3">
-                  {recentExams.slice(0, 5).map((exam: any) => {
+                  {recentExams.slice(0, 3).map((exam: any) => {
                     const perf = getExamPerformance(exam.id);
                     return (
                       <div key={exam.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
