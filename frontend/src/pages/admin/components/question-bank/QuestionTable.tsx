@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Image, ArrowUp, ArrowDown, Edit, Eye, Trash, Tags } from "lucide-react";
+import { FileText, Image, Edit, Eye, Trash, Tags, ChevronUp, ChevronDown } from "lucide-react";
 
 // Format date to readable format
 const formatDate = (dateString: string): string => {
@@ -44,6 +44,19 @@ interface QuestionTableProps {
   questionType?: string; // Optional filter by question type
 }
 
+const SortableHeader = ({ column, children, className, onClick }: { column?: string; children: React.ReactNode; className?: string; onClick: () => void }) => {
+  return (
+    <TableHead
+      onClick={onClick}
+      className={`cursor-pointer bg-gray-100 dark:bg-gray-800 text-xs uppercase tracking-wide font-semibold ${className || ''}`}
+    >
+      <div className="flex items-center gap-2">
+        <span>{children}</span>
+      </div>
+    </TableHead>
+  );
+};
+
 const QuestionTable: React.FC<QuestionTableProps> = ({
   questions,
   selectedIds,
@@ -70,7 +83,7 @@ const QuestionTable: React.FC<QuestionTableProps> = ({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-12">
+            <TableHead className="w-12 bg-gray-100 dark:bg-gray-800">
               <input 
                 type="checkbox" 
                 checked={isAllSelected} 
@@ -79,90 +92,96 @@ const QuestionTable: React.FC<QuestionTableProps> = ({
               />
             </TableHead>
             {!questionType && (
-              <TableHead className="w-12">ID</TableHead>
+              <SortableHeader onClick={() => handleSort('id')}>ID</SortableHeader>
             )}
-            <TableHead>
-              Title
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="ml-1 p-0 h-4 w-4 align-middle" 
-                onClick={() => handleSort('title')}
-              >
-                {sortOrder === 'asc' && sortBy === 'title' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />}
-              </Button>
-            </TableHead>
+            <SortableHeader onClick={() => handleSort('title')}>
+              <div className="flex items-center gap-2">
+                <span>Title</span>
+                {sortBy === 'title' ? (
+                  sortOrder === 'asc' ? (
+                    <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                  )
+                ) : (
+                  <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                )}
+              </div>
+            </SortableHeader>
             {!questionType && (
-              <TableHead>
-                Type
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="ml-1 p-0 h-4 w-4 align-middle" 
-                  onClick={() => handleSort('type')}
-                >
-                  {sortOrder === 'asc' && sortBy === 'type' ? 
-                    <ArrowUp className="h-3 w-3" /> : 
-                    <ArrowDown className="h-3 w-3" />}
-                </Button>
-              </TableHead>
+              <SortableHeader onClick={() => handleSort('type')}>
+                <div className="flex items-center gap-2">
+                  <span>Type</span>
+                  {sortBy === 'type' ? (
+                    sortOrder === 'asc' ? (
+                      <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                    )
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                  )}
+                </div>
+              </SortableHeader>
             )}
-            <TableHead>
-              Course
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="ml-1 p-0 h-4 w-4 align-middle" 
-                onClick={() => handleSort('course')}
-              >
-                {sortOrder === 'asc' && sortBy === 'course' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />}
-              </Button>
-            </TableHead>
-            <TableHead>
-              Difficulty
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="ml-1 p-0 h-4 w-4 align-middle" 
-                onClick={() => handleSort('difficulty')}
-              >
-                {sortOrder === 'asc' && sortBy === 'difficulty' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />}
-              </Button>
-            </TableHead>
-            <TableHead>
-              Created By
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="ml-1 p-0 h-4 w-4 align-middle" 
-                onClick={() => handleSort('created_by')}
-              >
-                {sortOrder === 'asc' && sortBy === 'created_by' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />}
-              </Button>
-            </TableHead>
-            <TableHead>
-              Created Date
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="ml-1 p-0 h-4 w-4 align-middle" 
-                onClick={() => handleSort('created')}
-              >
-                {sortOrder === 'asc' && sortBy === 'created' ? 
-                  <ArrowUp className="h-3 w-3" /> : 
-                  <ArrowDown className="h-3 w-3" />}
-              </Button>
-            </TableHead>
-            <TableHead>Keyword Pool</TableHead>
-            <TableHead className="text-center">Actions</TableHead>
+            <SortableHeader onClick={() => handleSort('course')}>
+              <div className="flex items-center gap-2">
+                <span>Course</span>
+                {sortBy === 'course' ? (
+                  sortOrder === 'asc' ? (
+                    <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                  )
+                ) : (
+                  <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                )}
+              </div>
+            </SortableHeader>
+            <SortableHeader onClick={() => handleSort('difficulty')}>
+              <div className="flex items-center gap-2">
+                <span>Difficulty</span>
+                {sortBy === 'difficulty' ? (
+                  sortOrder === 'asc' ? (
+                    <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                  )
+                ) : (
+                  <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                )}
+              </div>
+            </SortableHeader>
+            <SortableHeader onClick={() => handleSort('created_by')}>
+              <div className="flex items-center gap-2">
+                <span>Created By</span>
+                {sortBy === 'created_by' ? (
+                  sortOrder === 'asc' ? (
+                    <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                  )
+                ) : (
+                  <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                )}
+              </div>
+            </SortableHeader>
+            <SortableHeader onClick={() => handleSort('created')}>
+              <div className="flex items-center gap-2">
+                <span>Created</span>
+                {sortBy === 'created' ? (
+                  sortOrder === 'asc' ? (
+                    <ChevronUp className="h-3 w-3 -mt-1 text-primary" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 -mt-1 text-primary" />
+                  )
+                ) : (
+                  <ChevronDown className="h-3 w-3 -mt-1 text-muted-foreground/50" />
+                )}
+              </div>
+            </SortableHeader>
+            <TableHead className="bg-gray-100 dark:bg-gray-800 text-xs uppercase tracking-wide font-semibold">Keyword Pool</TableHead>
+            <TableHead className="text-center bg-gray-100 dark:bg-gray-800 text-xs uppercase tracking-wide font-semibold">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
