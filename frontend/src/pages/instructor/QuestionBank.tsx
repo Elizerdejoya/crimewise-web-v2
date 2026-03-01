@@ -167,11 +167,7 @@ const QuestionBank = () => {
     try {
       const parsed = JSON.parse(question.answer || "{}");
       if (parsed.specimens) {
-        // ensure each specimen has a pointType string (could be undefined in old data)
-        setSpecimens(parsed.specimens.map((r: any) => ({
-          ...r,
-          pointType: r.pointType || ""
-        })));
+        setSpecimens(parsed.specimens);
         setExplanationPoints(parsed.explanation?.points || 0);
       } else {
         setSpecimens([]);
@@ -184,8 +180,7 @@ const QuestionBank = () => {
   };
 
   const handleAddSpecimen = () => {
-    const lastPt = specimens.length > 0 ? specimens[specimens.length - 1].pointType || "" : "";
-    setSpecimens([...specimens, { points: 1, pointType: lastPt, column1: "", column2: "" }]);
+    setSpecimens([...specimens, { points: 1, pointType: "both", column1: "", column2: "" }]);
   };
 
   const handleSpecimenChange = (index: number, field: string, value: any) => {
@@ -199,11 +194,7 @@ const QuestionBank = () => {
 
     try {
       const answerKeyJson = {
-        specimens: specimens.map((r) => {
-          const obj: any = { points: r.points, column1: r.column1, column2: r.column2 };
-          if (r.pointType) obj.pointType = r.pointType;
-          return obj;
-        }),
+        specimens: specimens,
         explanation: {
           points: explanationPoints,
           conclusion: ""
@@ -367,12 +358,9 @@ const QuestionBank = () => {
                                       <Label className="text-xs">Point Type</Label>
                                       <select
                                         className="w-full border rounded px-2 py-1 text-xs"
-                                        value={specimen.pointType || ""}
+                                        value={specimen.pointType || "both"}
                                         onChange={(e) => handleSpecimenChange(idx, "pointType", e.target.value)}
                                       >
-                                        <option value="" disabled>
-                                          Point type
-                                        </option>
                                         <option value="both">if both correct</option>
                                         <option value="each">for each correct</option>
                                       </select>

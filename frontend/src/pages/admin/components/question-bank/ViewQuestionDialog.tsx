@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Tags } from "lucide-react";
 
 interface ViewQuestionDialogProps {
   isOpen: boolean;
@@ -19,6 +18,7 @@ interface ForensicAnswerRow {
   questionSpecimen: string;
   standardSpecimen: string;
   points: number;
+  pointType?: string;
 }
 
 interface ForensicAnswerData {
@@ -91,6 +91,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
             questionSpecimen: row.questionSpecimen || "",
             standardSpecimen: row.standardSpecimen || "",
             points: row.points || 1,
+            pointType: row.pointType || "for each",
           }));
           return {
             specimens,
@@ -106,6 +107,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
             questionSpecimen: row.questionSpecimen || "",
             standardSpecimen: row.standardSpecimen || "",
             points: row.points || 1,
+            pointType: row.pointType || "for each",
           }));
 
           return {
@@ -151,282 +153,292 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
     }
   }, [question]);
 
-  // Calculate total points for forensic questions
+  // Calculate total points for forensic questions (answer key only, accounting for pointType)
   const totalPoints = useMemo(() => {
     if (forensicData) {
-      const specimenPoints = forensicData.specimens.reduce(
-        (sum, row) => sum + (Number(row.points) || 1),
-        0
-      );
-      const explanationPoints = Number(forensicData.explanation?.points) || 0;
-      return specimenPoints + explanationPoints;
+      return forensicData.specimens.reduce((sum, row) => {
+        const rowPoints = Number(row.points) || 1;
+        const pointType = row.pointType || "both";
+        const columns = Object.keys(row).filter(col => !["points", "pointType"].includes(col));
+        if (pointType === "each") {
+          return sum + rowPoints * Math.max(1, columns.length);
+        } else {
+          return sum + rowPoints;
+        }
+      }, 0);
     }
     return null;
   }, [forensicData]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Question Details</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          {/* Title Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Title</Label>
-            <div className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-              <p className="text-gray-900 font-medium">{question.title}</p>
+        <div className="space-y-6 py-4">
+          {/* PART 1: QUESTION BASICS */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-blue-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Question Details</h3>
             </div>
-          </div>
 
-          {/* Question Text */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Question Text</Label>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
-              {question.text}
-            </div>
-          </div>
-
-          {/* Course & Difficulty */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Course</Label>
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm">
-                {question.course}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Course</Label>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800 font-medium">
+                  {question.course}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Difficulty Level</Label>
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold
+                    ${question.difficulty === "easy" ? "bg-green-100 text-green-800" : ""}
+                    ${question.difficulty === "medium" ? "bg-blue-100 text-blue-800" : ""}
+                    ${question.difficulty === "hard" ? "bg-orange-100 text-orange-800" : ""}
+                    ${question.difficulty === "expert" ? "bg-red-100 text-red-800" : ""}
+                  `}
+                  >
+                    {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
+                  </span>
+                </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Difficulty</Label>
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-semibold
-                  ${question.difficulty === "easy" ? "bg-green-100 text-green-800" : ""}
-                  ${question.difficulty === "medium" ? "bg-blue-100 text-blue-800" : ""}
-                  ${question.difficulty === "hard" ? "bg-orange-100 text-orange-800" : ""}
-                  ${question.difficulty === "expert" ? "bg-red-100 text-red-800" : ""}
-                `}
-                >
-                  {question.difficulty.charAt(0).toUpperCase() + question.difficulty.slice(1)}
-                </span>
+              <Label className="text-sm font-medium">Question Title</Label>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm font-medium text-gray-900">
+                {question.title}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Instructions</Label>
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg whitespace-pre-wrap text-sm text-gray-800">
+                {question.text}
               </div>
             </div>
           </div>
 
-          {/* Keyword Pool Section */}
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Keyword Pool</Label>
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              {question.keyword_pool_name ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="bg-indigo-100 text-indigo-800 border-indigo-300">
-                      <Tags className="h-3 w-3 mr-1" />
-                      {question.keyword_pool_name}
-                    </Badge>
-                  </div>
-                  {question.keyword_pool_description && (
-                    <p className="text-sm text-gray-600">{question.keyword_pool_description}</p>
-                  )}
-                  {question.selected_keywords && (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-xs font-semibold text-gray-700">Selected Keywords:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(() => {
-                          try {
-                            const keywords = typeof question.selected_keywords === 'string' 
-                              ? JSON.parse(question.selected_keywords)
-                              : question.selected_keywords;
-                            return Array.isArray(keywords) ? keywords : [];
-                          } catch (e) {
-                            console.error('Error parsing selected keywords:', e);
-                            return [];
-                          }
-                        })().map((keyword: string, index: number) => (
-                          <Badge key={index} variant="outline" className="bg-white text-xs border-gray-300 text-gray-700">
-                            {keyword}
-                          </Badge>
-                        ))}
-                      </div>
+          {/* PART 2: EVIDENCE SPECIMENS */}
+          {(imageGroups.standardImages?.length > 0 || imageGroups.questionImages?.length > 0) && (
+            <div className="space-y-4 border-t pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-8 bg-green-500 rounded"></div>
+                <h3 className="text-lg font-semibold text-gray-900">Evidence Specimens</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                {imageGroups.standardImages?.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-green-900">Standard Specimen Images ({imageGroups.standardImages.length})</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {imageGroups.standardImages.map((imgUrl, index) => (
+                        <div key={`std-${index}`} className="rounded-lg border border-gray-200 overflow-hidden">
+                          <img src={imgUrl} alt={`Standard ${index + 1}`} className="w-full h-24 object-cover" />
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <span className="text-gray-500 text-sm">No keyword pool assigned</span>
-              )}
-            </div>
-          </div>
+                  </div>
+                )}
 
-          {/* Display Rubrics - always show (same as TakeExam) */}
-          {rubricsObj && (
-            <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
-              <div className="font-semibold text-gray-900 mb-4 text-sm">Instructor Rubric Weights</div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-white border border-blue-200 rounded-lg shadow-sm">
-                  <div className="text-xs font-semibold text-blue-900">Completeness</div>
-                  <div className="text-2xl font-bold text-blue-600 my-2">{rubricsObj.findingsSimilarity}%</div>
-                  <div className="text-xs text-blue-700">conclusion + keywords</div>
-                </div>
-                <div className="p-3 bg-white border border-amber-200 rounded-lg shadow-sm">
-                  <div className="text-xs font-semibold text-amber-900">Objectivity</div>
-                  <div className="text-2xl font-bold text-amber-600 my-2">{rubricsObj.objectivity}%</div>
-                  <div className="text-xs text-amber-700">no subjective words</div>
-                </div>
-                <div className="p-3 bg-white border border-green-200 rounded-lg shadow-sm">
-                  <div className="text-xs font-semibold text-green-900">Structure</div>
-                  <div className="text-2xl font-bold text-green-600 my-2">{rubricsObj.structure}%</div>
-                  <div className="text-xs text-green-700">reasoning words</div>
-                </div>
+                {imageGroups.questionImages?.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-blue-900">Question Specimen Images ({imageGroups.questionImages.length})</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {imageGroups.questionImages.map((imgUrl, index) => (
+                        <div key={`q-${index}`} className="rounded-lg border border-gray-200 overflow-hidden">
+                          <img src={imgUrl} alt={`Question ${index + 1}`} className="w-full h-24 object-cover" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Answer Table */}
+          {/* PART 3: ANSWER KEY & KEYWORDS */}
           {question.type === "forensic" && forensicData ? (
-            <>
-              <div className="space-y-2 border-t pt-4">
-                <Label className="text-sm font-semibold text-gray-700">Answer Key Table</Label>
-                <div className="max-h-[300px] overflow-auto border border-gray-200 rounded-lg">
+            <div className="space-y-4 border-t pt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-1 w-8 bg-purple-500 rounded"></div>
+                <h3 className="text-lg font-semibold text-gray-900">Answer Key</h3>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">Specimen comparison specifications</p>
+                  <div className="text-sm font-semibold text-purple-600">Total Points: {totalPoints}</div>
+                </div>
+
+                <div className="max-h-[280px] overflow-auto border rounded-lg bg-gray-50">
                   <table className="w-full border-collapse text-sm">
-                    <thead className="bg-gradient-to-r from-gray-100 to-gray-50 sticky top-0">
+                    <thead className="sticky top-0 bg-gray-100 border-b">
                       <tr>
-                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">#</th>
-                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">Question Specimen</th>
-                        <th className="border border-gray-200 p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
-                        <th className="border border-gray-200 p-3 text-center font-semibold text-gray-700 w-20">Points</th>
+                        <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
+                        <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
+                        <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                        <th className="p-3 text-center font-semibold text-gray-700 w-24">Point Type</th>
+                        <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
                       </tr>
                     </thead>
                     <tbody>
                       {forensicData.specimens.map((row, idx) => (
-                        <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          <td className="border border-gray-200 p-3 text-center font-medium text-gray-700">
-                            {idx + 1}
+                        <tr key={idx} className="border-b hover:bg-white">
+                          <td className="p-3 text-center font-medium text-gray-700">{idx + 1}</td>
+                          <td className="p-3 text-gray-800">{row.questionSpecimen}</td>
+                          <td className="p-3 text-gray-800">{row.standardSpecimen}</td>
+                          <td className="p-3 text-center text-xs text-gray-700 font-medium">
+                            <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded whitespace-nowrap">
+                              {row.pointType === "both" ? "if both correct" : "for each correct"}
+                            </span>
                           </td>
-                          <td className="border border-gray-200 p-3 text-gray-800">{row.questionSpecimen}</td>
-                          <td className="border border-gray-200 p-3 text-gray-800">{row.standardSpecimen}</td>
-                          <td className="border border-gray-200 p-3 text-center font-semibold text-gray-900">
-                            {row.points}
-                          </td>
+                          <td className="p-3 text-center font-semibold text-gray-900">{row.points}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
 
-              {forensicData.explanation &&
-                (forensicData.explanation.text ||
-                  forensicData.explanation.conclusion) && (
-                  <>
-                    <div className="space-y-3 border-t pt-4">
-                      <Label className="text-sm font-semibold text-gray-700">
-                        Findings
-                        <span className="text-xs text-gray-500 font-normal ml-2">
-                          ({forensicData.explanation.points} points)
-                        </span>
-                      </Label>
-                      
-                      {forensicData.explanation.conclusion && (
-                        <div className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-indigo-200 space-y-3">
-                          <div className="text-xs font-semibold text-indigo-900">Expected Conclusion:</div>
-                          <div className="flex gap-2">
-                            <button
-                              disabled
-                              className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm transition-all ${
-                                forensicData.explanation.conclusion === "fake"
-                                  ? "bg-red-500 text-white"
-                                  : "bg-gray-200 text-gray-500"
-                              }`}
-                            >
-                              Not Written by Same Person
-                            </button>
-                            <button
-                              disabled
-                              className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm transition-all ${
-                                forensicData.explanation.conclusion === "real"
-                                  ? "bg-green-500 text-white"
-                                  : "bg-gray-200 text-gray-500"
-                              }`}
-                            >
-                              Written by Same Person
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {forensicData.explanation.text && (
-                        <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
-                          {forensicData.explanation.text}
+                {question.keyword_pool_name && (
+                  <div className="space-y-2 border-t pt-4 mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900">Keywords (Optional)</h4>
+                    </div>
+                    <div className="border rounded-lg p-3 bg-indigo-50 border-indigo-200">
+                      <div className="mb-2">
+                        <Badge variant="secondary" className="bg-indigo-100 text-indigo-800 border-indigo-300 text-xs">
+                          {question.keyword_pool_name}
+                        </Badge>
+                      </div>
+                      {question.selected_keywords && (
+                        <div className="flex flex-wrap gap-1">
+                          {(() => {
+                            try {
+                              const keywords = typeof question.selected_keywords === 'string'
+                                ? JSON.parse(question.selected_keywords)
+                                : question.selected_keywords;
+                              return Array.isArray(keywords) ? keywords : [];
+                            } catch (e) {
+                              return [];
+                            }
+                          })().map((keyword: string, index: number) => (
+                            <Badge key={index} variant="outline" className="bg-indigo-200 text-indigo-900 border-indigo-300 text-xs">
+                              {keyword}
+                            </Badge>
+                          ))}
                         </div>
                       )}
                     </div>
-                  </>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* PART 4: GRADING CRITERIA */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-amber-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Grading Criteria</h3>
+            </div>
+
+            {rubricsObj && (
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold text-amber-900">Rubric Weights (%)</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                    <div className="text-xs font-semibold text-blue-900 mb-2">Completeness</div>
+                    <div className="text-2xl font-bold text-blue-600">{rubricsObj.findingsSimilarity}%</div>
+                    <div className="text-xs text-blue-700 mt-1">conclusion + keywords</div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                    <div className="text-xs font-semibold text-amber-900 mb-2">Objectivity</div>
+                    <div className="text-2xl font-bold text-amber-600">{rubricsObj.objectivity}%</div>
+                    <div className="text-xs text-amber-700 mt-1">no subjective words</div>
+                  </div>
+                  <div className="p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                    <div className="text-xs font-semibold text-green-900 mb-2">Structure</div>
+                    <div className="text-2xl font-bold text-green-600">{rubricsObj.structure}%</div>
+                    <div className="text-xs text-green-700 mt-1">reasoning words</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {forensicData?.explanation && (forensicData.explanation.text || forensicData.explanation.conclusion) && (
+              <div className="space-y-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
+                <Label className="text-sm font-semibold text-teal-900 block">Forensic Conclusion & Explanation</Label>
+
+                {forensicData.explanation.conclusion && (
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700">Expected Conclusion</Label>
+                    <div className="flex gap-2">
+                      <button
+                        disabled
+                        className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm ${
+                          forensicData.explanation.conclusion === "fake"
+                            ? "bg-red-500 text-white"
+                            : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
+                        Not Written By The Same Person
+                      </button>
+                      <button
+                        disabled
+                        className={`flex-1 px-3 py-2 rounded-md font-semibold text-sm ${
+                          forensicData.explanation.conclusion === "real"
+                            ? "bg-green-500 text-white"
+                            : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
+                        Written By The Same Person
+                      </button>
+                    </div>
+                  </div>
                 )}
 
-              <div className="text-xs font-semibold text-gray-700 text-right border-t pt-3">
-                Total Points: <span className="text-lg font-bold text-gray-900">{totalPoints}</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="space-y-2">
-                <Label className="text-sm font-semibold text-gray-700">Answer</Label>
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 whitespace-pre-wrap text-sm text-gray-800">
-                  {question.answer}
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Images Section */}
-          {question.image && (
-            <>
-              <div className="space-y-3 border-t pt-4">
-                <Label className="text-sm font-semibold text-gray-700">Specimen Images</Label>
-                <div>
-                  {imageGroups.standardImages && imageGroups.standardImages.length > 0 && (
-                    <div className="mb-4">
-                      <div className="text-xs font-semibold text-gray-700 mb-3">Standard Specimen Images</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {imageGroups.standardImages.map((imgUrl, index) => (
-                          <div key={`std-${index}`} className="rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                            <img src={imgUrl} alt={`Standard ${index + 1}`} className="w-full h-40 object-cover" />
-                          </div>
-                        ))}
-                      </div>
+                {forensicData.explanation.text && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-medium text-gray-700">Expected Explanation</Label>
+                      {forensicData.explanation.points > 0 && (
+                        <span className="text-xs text-gray-600">({forensicData.explanation.points} points)</span>
+                      )}
                     </div>
-                  )}
-
-                  {imageGroups.questionImages && imageGroups.questionImages.length > 0 && (
-                    <div>
-                      <div className="text-xs font-semibold text-gray-700 mb-3">Question Specimen Images</div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {imageGroups.questionImages.map((imgUrl, index) => (
-                          <div key={`q-${index}`} className="rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                            <img src={imgUrl} alt={`Question ${index + 1}`} className="w-full h-40 object-cover" />
-                          </div>
-                        ))}
-                      </div>
+                    <div className="p-3 bg-white border border-teal-200 rounded-lg whitespace-pre-wrap text-sm text-gray-800">
+                      {forensicData.explanation.text}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            </>
-          )}
+            )}
+          </div>
 
           {/* Created Info */}
           <div className="grid grid-cols-2 gap-4 border-t pt-4">
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-700">Created By</Label>
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-800">
+              <div className="p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-800">
                 {question.created_by || "System"}
               </div>
             </div>
-
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-700">Created Date</Label>
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-800">
-                {question.created}
+              <div className="p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-800">
+                {question.created ? (() => {
+                  try {
+                    const date = new Date(question.created);
+                    const phtDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+                    return phtDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+                  } catch (e) {
+                    return question.created;
+                  }
+                })() : 'N/A'}
               </div>
             </div>
           </div>

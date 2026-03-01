@@ -19,8 +19,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { updateQuestion, uploadImage } from "./utils";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, X } from "lucide-react";
+import { PlusCircle, X, Settings } from "lucide-react";
 import { useRef } from "react";
+import KeywordPoolManager from "./KeywordPoolManager";
 
 interface EditQuestionDialogProps {
   isOpen: boolean;
@@ -56,6 +57,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
   const [questionImages, setQuestionImages] = useState<string[]>([]);
   const [selectedKeywordPool, setSelectedKeywordPool] = useState<any>(null);
   const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+  const [isKeywordPoolManagerOpen, setIsKeywordPoolManagerOpen] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
@@ -420,381 +422,233 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Edit Question</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-        
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Title</Label>
-            <Input 
-              value={editForm.title} 
-              onChange={e => handleEditChange("title", e.target.value)}
-              className="text-sm"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label className="text-sm font-semibold text-gray-700">Question Text</Label>
-            <Textarea 
-              value={editForm.text} 
-              onChange={e => handleEditChange("text", e.target.value)} 
-              rows={5}
-              className="text-sm resize-none"
-            />
-          </div>
-          
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Course</Label>
-              <Select 
-                value={String(editForm.course_id)} 
-                onValueChange={v => handleEditChange("course_id", v)}
-              >
-                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.code ? `${c.code}` : c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <div className="space-y-6 py-4">
+          {/* PART 1: QUESTION BASICS */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-blue-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Question Details</h3>
             </div>
-            
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Difficulty</Label>
-              <Select 
-                value={editForm.difficulty} 
-                onValueChange={v => handleEditChange("difficulty", v)}
-              >
-                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                  <SelectItem value="expert">Expert</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="course" className="text-sm font-medium">Course <span className="text-red-500">*</span></Label>
+                <Select
+                  value={String(editForm.course_id)}
+                  onValueChange={(v) => handleEditChange("course_id", v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.code ? `${c.code} - ${c.name}` : c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="difficulty" className="text-sm font-medium">Difficulty Level <span className="text-red-500">*</span></Label>
+                <Select
+                  value={editForm.difficulty}
+                  onValueChange={(v) => handleEditChange("difficulty", v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
+                    <SelectItem value="expert">Expert</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-sm font-medium">Question Title <span className="text-red-500">*</span></Label>
+              <Input
+                id="title"
+                value={editForm.title}
+                onChange={(e) => handleEditChange("title", e.target.value)}
+                placeholder="Enter a title for your question"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="question-text" className="text-sm font-medium">Instructions</Label>
+              <Textarea
+                id="question-text"
+                value={editForm.text}
+                onChange={(e) => handleEditChange("text", e.target.value)}
+                placeholder="Enter the full question text here..."
+                rows={4}
+                className="text-sm"
+              />
+            </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold text-gray-700">Type</Label>
-              <Select 
-                value={editForm.type} 
-                onValueChange={v => handleEditChange("type", v)}
-              >
-                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="forensic">Forensic Document Comparison</SelectItem>
-                </SelectContent>
-              </Select>
+          {/* PART 2: EVIDENCE MANAGEMENT */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-green-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Evidence Specimens</h3>
             </div>
-          </div>
-          
-          {/* Keyword Pool Selection */}
-          <div className="space-y-2">
-            <Label>Keyword Pool</Label>
-            <Select 
-              value={selectedKeywordPool?.id ? String(selectedKeywordPool.id) : "none"} 
-              onValueChange={handleKeywordPoolChange}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a keyword pool (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No keyword pool</SelectItem>
-                {keywordPools.map((pool) => (
-                  <SelectItem key={pool.id} value={String(pool.id)}>
-                    {pool.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            {selectedKeywordPool && (
-              <div className="space-y-2 p-3 bg-gray-50 rounded-md">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Select Keywords:</Label>
-                  <span className="text-xs text-gray-500">
-                    {selectedKeywords.length} selected
-                  </span>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <Label className="text-sm font-semibold text-green-900 block mb-3">Standard Specimen Images</Label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    multiple
+                    ref={standardImageInputRef}
+                    onChange={(e) => handleImageChange(e, "standard")}
+                    className="text-xs text-gray-600"
+                  />
+                  <div className="text-xs text-green-700 mt-2">Max 15 images, 10MB each (PNG/JPEG)</div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    try {
-                      const keywords = typeof selectedKeywordPool.keywords === 'string' 
-                        ? JSON.parse(selectedKeywordPool.keywords)
-                        : selectedKeywordPool.keywords;
-                      return Array.isArray(keywords) ? keywords : [];
-                    } catch (e) {
-                      console.error('Error parsing keywords:', e);
-                      return [];
-                    }
-                  })().map((keyword: string, index: number) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => toggleKeyword(keyword)}
-                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
-                        selectedKeywords.includes(keyword)
-                          ? 'bg-gray-800 text-white border-gray-800'
-                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                      }`}
-                    >
-                      {keyword}
-                    </button>
-                  ))}
-                </div>
-                {selectedKeywords.length > 0 && (
-                  <div className="mt-2">
-                    <Label className="text-sm font-medium">Selected Keywords:</Label>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {selectedKeywords.map((keyword, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-gray-200 text-gray-800 rounded-full"
-                        >
-                          {keyword}
-                          <button
-                            type="button"
-                            onClick={() => toggleKeyword(keyword)}
-                            className="ml-1 text-gray-600 hover:text-gray-800"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </span>
+                {standardImages.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">
+                        Standard Specimens ({standardImages.length})
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={() => { setStandardImages([]); setQuestionImages([]); }} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {standardImages.map((url, index) => (
+                        <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
+                          <img src={url} alt={`s-${index}`} className="h-20 object-contain" />
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, 'standard')}>Remove</Button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
-            )}
-          </div>
-          
-          {/* Rubrics Editor */}
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
-              <div className={`text-xs font-medium ${
-                rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100
-                  ? 'text-gray-600'
-                  : 'text-red-600'
-              }`}>Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
-            </div>
-            {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100 && (
-              <div className="text-sm text-red-600">
-                Total must equal 100% before saving.
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5 p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rubrics.findingsSimilarity}
-                  onChange={e => setRubrics({...rubrics, findingsSimilarity: Number(e.target.value)})}
-                  className="h-8 text-sm font-bold text-center"
-                />
-                <div className="text-xs text-blue-700">conclusion + keywords</div>
-              </div>
-              <div className="space-y-1.5 p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
-                <Label className="text-xs font-semibold text-amber-900">Objectivity</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rubrics.objectivity}
-                  onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})}
-                  className="h-8 text-sm font-bold text-center"
-                />
-                <div className="text-xs text-amber-700">no subjective words</div>
-              </div>
-              <div className="space-y-1.5 p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
-                <Label className="text-xs font-semibold text-green-900">Structure</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rubrics.structure}
-                  onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})}
-                  className="h-8 text-sm font-bold text-center"
-                />
-                <div className="text-xs text-green-700">reasoning words</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Image lists (standard vs question) */}
-          <div className="space-y-2 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <Label>Standard Specimen Images</Label>
-              <Button variant="outline" size="sm" onClick={() => { setStandardImages([]); setQuestionImages([]); }}>
-                Clear All
-              </Button>
-            </div>
-            {standardImages.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                {standardImages.map((url, index) => (
-                  <div key={index} className="p-1 border rounded flex flex-col items-center">
-                    <img src={url} alt={`s-${index}`} className="h-20 object-contain mb-1" />
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, 'standard')}>Remove</Button>
+              <div className="space-y-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <Label className="text-sm font-semibold text-blue-900 block mb-3">Question Specimen Images</Label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    multiple
+                    ref={questionImageInputRef}
+                    onChange={(e) => handleImageChange(e, "question")}
+                    className="text-xs text-gray-600"
+                  />
+                  <div className="text-xs text-blue-700 mt-2">Max 15 images, 10MB each (PNG/JPEG)</div>
+                </div>
+                {questionImages.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">
+                        Question Specimens ({questionImages.length})
+                      </span>
+                      <Button variant="ghost" size="sm" onClick={() => { setStandardImages([]); setQuestionImages([]); }} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {questionImages.map((url, index) => (
+                        <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
+                          <img src={url} alt={`q-${index}`} className="h-20 object-contain" />
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, 'question')}>Remove</Button>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">No standard specimen images</div>
-            )}
-
-            <Label className="pt-2">Question Specimen Images</Label>
-            {questionImages.length > 0 ? (
-              <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                {questionImages.map((url, index) => (
-                  <div key={index} className="p-1 border rounded flex flex-col items-center">
-                    <img src={url} alt={`q-${index}`} className="h-20 object-contain mb-1" />
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, 'question')}>Remove</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">No question specimen images</div>
-            )}
-
-            <div className="mt-2 space-y-2">
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  multiple
-                  ref={standardImageInputRef}
-                  onChange={(e) => handleImageChange(e, "standard")}
-                  disabled={isUploadingImages}
-                  className="flex-1"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isUploadingImages}
-                  onClick={() => standardImageInputRef.current?.click()}
-                >
-                  Add Standard
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  multiple
-                  ref={questionImageInputRef}
-                  onChange={(e) => handleImageChange(e, "question")}
-                  disabled={isUploadingImages}
-                  className="flex-1"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isUploadingImages}
-                  onClick={() => questionImageInputRef.current?.click()}
-                >
-                  Add Question
-                </Button>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Forensic answer editor */}
-          {editForm.type === "forensic" && (
-            <div className="space-y-2">
+          {/* PART 3: ANSWER KEY & KEYWORDS */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-purple-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Answer Key</h3>
+            </div>
+
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Answer Key Table</Label>
-                <div className="text-sm text-muted-foreground">
+                <p className="text-sm text-gray-600">Define how specimens compare and assign points per row</p>
+                <div className="text-sm font-semibold text-purple-600">
                   Total Points: {forensicRows.reduce((sum, row) => {
                     const rowPoints = Number(row.points) || 1;
-                    const pointType = row.pointType || ""; // treat blank as both for calculations
-
+                    const pointType = row.pointType || "both";
+                    const columns = Object.keys(row).filter(col => !["points", "pointType"].includes(col));
                     if (pointType === "each") {
-                      return sum + (rowPoints * 2); // Multiply by 2 for typical comparison (question vs standard)
+                      return sum + rowPoints * Math.max(1, columns.length);
                     } else {
                       return sum + rowPoints;
                     }
                   }, 0)}
                 </div>
               </div>
-              
-              <div className="max-h-[300px] overflow-auto border rounded-md">
-                <table className="w-full border text-sm">
-                  <thead className="sticky top-0 bg-white">
+
+              <div className="max-h-[280px] overflow-auto border rounded-lg bg-gray-50">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 bg-gray-100 border-b">
                     <tr>
-                      <th className="border p-2 w-12 text-center">#</th>
-                      <th className="border p-2">Question Specimen</th>
-                      <th className="border p-2">Standard Specimen</th>
-                      <th className="border p-2 w-24">Points</th>
-                      <th className="border p-2 w-32">Point Type</th>
-                      <th className="border p-2">Actions</th>
+                      <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-32">Point Type</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-20">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {forensicRows.map((row, idx) => (
-                      <tr key={idx}>
-                        <td className="border p-2 text-center font-medium w-12">
-                          {idx + 1}
-                        </td>
-                        <td className="border p-2">
+                      <tr key={idx} className="border-b hover:bg-white">
+                        <td className="p-3 text-center font-medium text-gray-700">{idx + 1}</td>
+                        <td className="p-2">
                           <input
-                            className="w-full border px-2 py-1"
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
                             value={row.questionSpecimen}
-                            onChange={e => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
-                            placeholder="Question Specimen"
-                            title="Question Specimen"
+                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
+                            placeholder="e.g., slant, pressure"
                           />
                         </td>
-                        <td className="border p-2">
+                        <td className="p-2">
                           <input
-                            className="w-full border px-2 py-1"
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
                             value={row.standardSpecimen}
-                            onChange={e => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
-                            placeholder="Standard Specimen"
-                            title="Standard Specimen"
+                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
+                            placeholder="e.g., slant, pressure"
                           />
                         </td>
-                        <td className="border p-2">
+                        <td className="p-2">
                           <input
-                            className="w-full border px-2 py-1 text-center"
+                            className="w-full border rounded px-2 py-1 text-center text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-400"
                             type="number"
                             min={1}
                             value={row.points}
-                            onChange={e => handleForensicRowChange(idx, "points", Number(e.target.value))}
-                            placeholder="Points"
-                            title="Points for this row"
+                            onChange={(e) => handleForensicRowChange(idx, "points", Number(e.target.value))}
                           />
                         </td>
-                        <td className="border p-2">
+                        <td className="p-2">
                           <select
-                            className="w-full border px-2 py-1 text-xs"
-                            value={row.pointType || ""}
-                            onChange={e => handleForensicRowChange(idx, "pointType", e.target.value)}
-                            title="each = points per correct answer, both = points only if all answers correct"
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            value={row.pointType || "each"}
+                            onChange={(e) => handleForensicRowChange(idx, "pointType", e.target.value)}
                           >
-                            <option value="" disabled>
-                              Point type
-                            </option>
-                            <option value="each">for each correct</option>
                             <option value="both">if both correct</option>
+                            <option value="each">for each correct</option>
                           </select>
                         </td>
-                        <td className="border p-2">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleRemoveForensicRow(idx)} 
+                        <td className="p-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveForensicRow(idx)}
                             disabled={forensicRows.length === 1}
+                            className="h-7 text-xs"
                           >
                             Remove
                           </Button>
@@ -804,81 +658,235 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                   </tbody>
                 </table>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleAddForensicRow}
-                className="flex items-center gap-1 mt-2"
+                className="w-full flex items-center justify-center gap-2 h-9"
               >
                 <PlusCircle className="h-4 w-4" /> Add Row
               </Button>
-              
-              <div className="space-y-2 border-t pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="conclusion">Conclusion</Label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setConclusion(conclusion === "fake" ? null : "fake")}
-                      className={`flex-1 px-4 py-2 rounded-md font-semibold text-sm transition-all ${
-                        conclusion === "fake"
-                          ? "bg-red-500 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                    >
-                      Not Written by Same Person
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConclusion(conclusion === "real" ? null : "real")}
-                      className={`flex-1 px-4 py-2 rounded-md font-semibold text-sm transition-all ${
-                        conclusion === "real"
-                          ? "bg-green-500 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                    >
-                      Written by Same Person
-                    </button>
-                  </div>
+
+              {/* Keywords Subsection */}
+              <div className="space-y-3 border-t pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Keywords (Optional)</h4>
                 </div>
+
+                {selectedKeywordPool ? (
+                  <div className="border rounded-lg p-4 bg-indigo-50 border-indigo-200">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <h5 className="font-semibold text-indigo-900 mb-1">
+                          {selectedKeywordPool.name}
+                        </h5>
+                        {selectedKeywordPool.description && (
+                          <p className="text-sm text-gray-600 mb-3">{selectedKeywordPool.description}</p>
+                        )}
+                        <div className="space-y-2">
+                          <div>
+                            <div className="text-xs font-semibold text-indigo-900 mb-2">Selected Keywords</div>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedKeywords.length > 0 ? (
+                                selectedKeywords.map((keyword, index) => (
+                                  <span key={index} className="px-3 py-1 bg-indigo-200 text-indigo-900 text-xs font-medium rounded-full flex items-center gap-2">
+                                    {keyword}
+                                    <button onClick={() => setSelectedKeywords(selectedKeywords.filter(k => k !== keyword))} className="hover:text-red-600">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-gray-500 italic">No keywords selected</span>
+                              )}
+                            </div>
+                          </div>
+                          {selectedKeywordPool.keywords.filter(k => !selectedKeywords.includes(k)).length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-indigo-900 mb-2">Available Keywords</div>
+                              <div className="flex flex-wrap gap-1">
+                                {selectedKeywordPool.keywords
+                                  .filter(keyword => !selectedKeywords.includes(keyword))
+                                  .map((keyword, index) => (
+                                    <button
+                                      key={index}
+                                      onClick={() => setSelectedKeywords([...selectedKeywords, keyword])}
+                                      className="px-3 py-1 bg-white border border-indigo-300 text-indigo-700 text-xs font-medium rounded-full hover:bg-indigo-100 transition"
+                                    >
+                                      + {keyword}
+                                    </button>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedKeywordPool(null);
+                          setSelectedKeywords([]);
+                        }}
+                        className="text-gray-400 hover:text-red-500 h-8 w-8 p-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsKeywordPoolManagerOpen(true)}
+                    className="w-full h-9 flex items-center justify-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Select Keyword Pool
+                  </Button>
+                )}
+                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                  Optionally select keywords to guide answer evaluation and provide expected terminology.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PART 4: GRADING CRITERIA */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-amber-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Grading Criteria</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
+                <div className={`text-xs font-medium ${
+                  rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100
+                    ? 'text-gray-600'
+                    : 'text-red-600'
+                }`}>Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
+              </div>
+              {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100 && (
+                <div className="text-sm text-red-600">
+                  Total must equal 100% before saving.
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5 p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                  <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rubrics.findingsSimilarity}
+                    onChange={e => setRubrics({...rubrics, findingsSimilarity: Number(e.target.value)})}
+                    className="h-8 text-sm font-bold text-center"
+                  />
+                  <div className="text-xs text-blue-700">conclusion + keywords</div>
+                </div>
+                <div className="space-y-1.5 p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                  <Label className="text-xs font-semibold text-amber-900">Objectivity</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rubrics.objectivity}
+                    onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})}
+                    className="h-8 text-sm font-bold text-center"
+                  />
+                  <div className="text-xs text-amber-700">no subjective words</div>
+                </div>
+                <div className="space-y-1.5 p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+                  <Label className="text-xs font-semibold text-green-900">Structure</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rubrics.structure}
+                    onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})}
+                    className="h-8 text-sm font-bold text-center"
+                  />
+                  <div className="text-xs text-green-700">reasoning words</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Forensic Conclusion & Explanation Subsection */}
+            <div className="space-y-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
+              <Label className="text-sm font-semibold text-teal-900 block">Forensic Conclusion & Explanation</Label>
+              
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-gray-700">Conclusion Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={conclusion === "fake" ? "default" : "outline"}
+                    onClick={() => setConclusion("fake")}
+                    className="flex-1 h-9 text-sm"
+                  >
+                    Not Written By The Same Person
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={conclusion === "real" ? "default" : "outline"}
+                    onClick={() => setConclusion("real")}
+                    className="flex-1 h-9 text-sm"
+                  >
+                    Written By The Same Person
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="findings">Findings</Label>
+                  <Label htmlFor="explanation" className="text-xs font-medium text-gray-700">Expected Explanation</Label>
                   <div className="flex items-center gap-2">
-                    <Label htmlFor="explanation-points" className="text-sm">Points:</Label>
+                    <Label htmlFor="explanation-points" className="text-xs font-medium text-gray-700">Points:</Label>
                     <Input
                       id="explanation-points"
                       type="number"
                       min={0}
-                      className="w-20 h-8"
+                      className="w-16 h-8 text-center text-xs"
                       value={explanationPoints}
-                      onChange={e => setExplanationPoints(Number(e.target.value))}
+                      onChange={(e) => setExplanationPoints(Number(e.target.value))}
                     />
                   </div>
                 </div>
                 <Textarea
                   id="explanation"
                   value={explanation}
-                  onChange={e => setExplanation(e.target.value)}
-                  placeholder="Enter an explanation for the table comparison..."
-                  rows={4}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  placeholder="Enter expected evidence, findings, or key phrases to look for..."
+                  rows={3}
+                  className="text-sm"
                 />
-                <div className="text-sm text-muted-foreground">
-                  Add an explanation of the table comparison that will be scored separately.
-                </div>
               </div>
             </div>
-          )}
-          
-          <DialogFooter>
-            <Button variant="outline" onClick={() => !isSaving && onOpenChange(false)} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isSaving || rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100}>
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
+          </div>
         </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => !isSaving && onOpenChange(false)} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSaveEdit} disabled={isSaving || (rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100)}>
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
+
+      <KeywordPoolManager
+        isOpen={isKeywordPoolManagerOpen}
+        onOpenChange={setIsKeywordPoolManagerOpen}
+        onPoolSelected={(pool) => {
+          setSelectedKeywordPool(pool);
+          setSelectedKeywords([...pool.keywords]);
+        }}
+        selectMode={true}
+      />
     </Dialog>
   );
 };

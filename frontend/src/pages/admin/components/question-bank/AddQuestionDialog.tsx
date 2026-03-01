@@ -56,7 +56,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   const [questionPreviews, setQuestionPreviews] = useState<string[]>([]);
   const [standardPreviews, setStandardPreviews] = useState<string[]>([]);
   const [forensicAnswerRows, setForensicAnswerRows] = useState([
-    { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "" },
+    { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" },
   ]);
   const [explanation, setExplanation] = useState("");
   const [explanationPoints, setExplanationPoints] = useState(1);
@@ -127,7 +127,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             const needed = next.length - rows.length;
             if (needed <= 0) return rows;
             const lastPoints = rows.length > 0 ? rows[rows.length - 1].points : 1;
-            const lastPointType = rows.length > 0 ? rows[rows.length - 1].pointType || "" : "";
+            const lastPointType = rows.length > 0 ? rows[rows.length - 1].pointType : "each";
             const additions = Array.from({ length: needed }).map(() => ({ questionSpecimen: "", standardSpecimen: "", points: lastPoints, pointType: lastPointType }));
             return [...rows, ...additions];
           });
@@ -174,7 +174,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     if (questionImageInputRef.current) questionImageInputRef.current.value = "";
     if (standardImageInputRef.current) standardImageInputRef.current.value = "";
     // reset forensic rows to a single default row when clearing images
-    setForensicAnswerRows([{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "" }]);
+    setForensicAnswerRows([{ questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" }]);
   };
 
   const handleForensicRowChange = (
@@ -196,8 +196,8 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         : 1;
     const lastRowPointType =
       forensicAnswerRows.length > 0
-        ? forensicAnswerRows[forensicAnswerRows.length - 1].pointType || ""
-        : "";
+        ? forensicAnswerRows[forensicAnswerRows.length - 1].pointType
+        : "each";
 
     setForensicAnswerRows((rows) => [
       ...rows,
@@ -226,7 +226,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     setQuestionPreviews([]);
     setStandardPreviews([]);
     setForensicAnswerRows([
-      { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "" },
+      { questionSpecimen: "", standardSpecimen: "", points: 1, pointType: "each" },
     ]);
     setExplanation("");
     setExplanationPoints(1);
@@ -243,20 +243,6 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         toast({
           title: "Validation Error",
           description: "Title, course, and difficulty are required.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // ensure rubric percentages add up to 100
-      const totalRubrics =
-        Number(rubrics.findingsSimilarity || 0) +
-        Number(rubrics.objectivity || 0) +
-        Number(rubrics.structure || 0);
-      if (totalRubrics !== 100) {
-        toast({
-          title: "Validation Error",
-          description: "Rubric weights must total 100%.",
           variant: "destructive",
         });
         return;
@@ -340,9 +326,6 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       const allUrls = [...standardUrls, ...questionUrls];
       const combined = allUrls.length > 0 ? allUrls.join("|") : "";
       finalizeQuestionSubmission(combined);
-    } catch (err) {
-      console.error('[AddQuestionDialog] unexpected error:', err);
-      toast({ title: 'Error', description: 'Unable to add question.', variant: 'destructive' });
     } finally {
       setIsSaving(false);
     }
@@ -352,18 +335,12 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
     // Create the answer data with specimens and explanation
     // IMPORTANT: Track the number of question images so TakeExam can correctly split them later
     const answerData = {
-      specimens: forensicAnswerRows.map((row) => {
-        const specimen: any = {
-          questionSpecimen: row.questionSpecimen,
-          standardSpecimen: row.standardSpecimen,
-          points: Number(row.points) || 1,
-        };
-        // only include pointType if user selected one; avoid defaulting to "each"
-        if (row.pointType) {
-          specimen.pointType = row.pointType;
-        }
-        return specimen;
-      }),
+      specimens: forensicAnswerRows.map((row) => ({
+        questionSpecimen: row.questionSpecimen,
+        standardSpecimen: row.standardSpecimen,
+        points: Number(row.points) || 1,
+        pointType: row.pointType || "each",
+      })),
       explanation: {
         text: explanation,
         points: Number(explanationPoints) || 0,
@@ -411,12 +388,10 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
       keyword_pool_id: selectedKeywordPool?.id || null,
       selected_keywords: selectedKeywords.length > 0 ? selectedKeywords : null,
     };
-    console.log('[AddQuestionDialog] payload', payload);
 
     addQuestion(
       payload,
       () => {
-        setIsSaving(false);
         toast({
           title: "Success",
           description: "Question added successfully.",
@@ -426,7 +401,6 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         onQuestionAdded();
       },
       (err) => {
-        setIsSaving(false);
         toast({
           title: "Error",
           description: err.message || "Failed to add question.",
@@ -438,453 +412,469 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[625px] max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add New Question</DialogTitle>
-          <DialogDescription>
-            Create a new question for the examination system.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="course">Course</Label>
-            <Select
-              value={form.course}
-              onValueChange={(v) => handleFormChange("course", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select course" />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.code ? `${c.code} - ${c.name}` : c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="title">Question Title</Label>
-            <Input
-              id="title"
-              value={form.title}
-              onChange={(e) => handleFormChange("title", e.target.value)}
-              placeholder="Enter a title for your question"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="question-text">Instructions</Label>
-            <Textarea
-              id="question-text"
-              value={form.text}
-              onChange={(e) => handleFormChange("text", e.target.value)}
-              placeholder="Enter the full question text here..."
-              rows={5}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Standard Specimen Images</Label>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              multiple
-              ref={standardImageInputRef}
-              onChange={(e) => handleImageChange(e, "standard")}
-            />
-            {standardImageFiles.length > 0 && (
-              <div className="space-y-2 mt-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Standard Specimens ({standardImageFiles.length})
-                  </span>
-                  <Button type="button" variant="outline" size="sm" onClick={handleClearImages}>Clear All</Button>
-                </div>
-                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                  {standardPreviews.map((url, index) => (
-                    <div key={index} className="p-1 border rounded flex flex-col items-center">
-                      <img src={url} alt={`s-${index}`} className="h-20 object-contain mb-1" />
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, "standard")}>Remove</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          <div className="space-y-2">
-            <Label>Question Specimen Images</Label>
-            <input
-              type="file"
-              accept="image/png,image/jpeg"
-              multiple
-              ref={questionImageInputRef}
-              onChange={(e) => handleImageChange(e, "question")}
-            />
-            {questionImageFiles.length > 0 && (
+    <>
+      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Add New Question</DialogTitle>
+            <DialogDescription>
+              Create a forensic question with evidence specimens and grading criteria.
+            </DialogDescription>
+            </DialogHeader>
+          <div className="space-y-6 py-4">
+          {/* PART 1: QUESTION BASICS */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-blue-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Question Details</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">
-                    Question Specimens ({questionImageFiles.length})
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleClearImages}
-                  >
-                    Clear All
-                  </Button>
-                </div>
-                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                  {questionPreviews.map((url, index) => (
-                    <div key={index} className="p-1 border rounded flex flex-col items-center">
-                      <img src={url} alt={`q-${index}`} className="h-20 object-contain mb-1" />
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, "question")}>Remove</Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="difficulty">Difficulty Level</Label>
-            <Select
-              value={form.difficulty}
-              onValueChange={(v) => handleFormChange("difficulty", v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="easy">Easy</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="hard">Hard</SelectItem>
-                <SelectItem value="expert">Expert</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <Label>Keyword Pool (Optional)</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => navigate('/admin/keyword-pools')}
-                className="flex items-center gap-1"
-              >
-                <Settings className="h-4 w-4" />
-                Manage Pools
-              </Button>
-            </div>
-            
-            {selectedKeywordPool ? (
-              <div className="border rounded-lg p-3 bg-gray-100">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-semibold text-gray-900">
-                      {selectedKeywordPool.name}
-                    </h4>
-                    {selectedKeywordPool.description && (
-                      <p className="text-sm text-gray-600 mt-1">
-                        {selectedKeywordPool.description}
-                      </p>
-                    )}
-                    <div className="mt-2">
-                      <div className="text-sm font-medium mb-2">Selected Keywords:</div>
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {selectedKeywords.map((keyword, index) => (
-                          <span
-                            key={index}
-                            className="px-2 py-1 bg-gray-200 text-gray-800 text-xs rounded-full flex items-center gap-1"
-                          >
-                            {keyword}
-                            <button
-                              onClick={() => {
-                                setSelectedKeywords(selectedKeywords.filter(k => k !== keyword));
-                              }}
-                              className="ml-1 hover:text-red-500"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                      <div className="text-sm font-medium mb-2">Available Keywords:</div>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedKeywordPool.keywords
-                          .filter(keyword => !selectedKeywords.includes(keyword))
-                          .map((keyword, index) => (
-                            <button
-                              key={index}
-                              onClick={() => {
-                                setSelectedKeywords([...selectedKeywords, keyword]);
-                              }}
-                              className="px-2 py-1 bg-gray-300 text-gray-800 text-xs rounded-full hover:bg-gray-400"
-                            >
-                              + {keyword}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedKeywordPool(null);
-                      setSelectedKeywords([]);
-                    }}
-                    className="text-gray-500 hover:text-red-500"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsKeywordPoolManagerOpen(true)}
-                  className="flex-1"
+                <Label htmlFor="course" className="text-sm font-medium">Course <span className="text-red-500">*</span></Label>
+                <Select
+                  value={form.course}
+                  onValueChange={(v) => handleFormChange("course", v)}
                 >
-                  Select Keyword Pool
-                </Button>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.code ? `${c.code} - ${c.name}` : c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            
-            <div className="text-sm text-muted-foreground">
-              Select a keyword pool to provide predefined keywords for answer evaluation.
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Answer Key Table</Label>
-              <div className="text-sm text-muted-foreground">
-                Total Points:{" "}
-                {forensicAnswerRows.reduce((sum, row) => {
-                  const rowPoints = Number(row.points) || 1;
-                  const pointType = row.pointType || ""; // we'll treat unknown as both when calculating later
-                  // For "each" type, we need to estimate columns (typically 2: questionSpecimen, standardSpecimen, plus user inputs)
-                  // We'll use a conservative estimate of 1 column minimum
-                  if (pointType === "each") {
-                    return sum + (rowPoints * 2); // Multiply by 2 for typical comparison (question vs standard)
-                  } else {
-                    return sum + rowPoints;
-                  }
-                }, 0)}
-              </div>
-            </div>
-
-            <div className="max-h-[300px] overflow-auto border rounded-md">
-              <table className="w-full border text-sm">
-                <thead className="sticky top-0 bg-white">
-                  <tr>
-                    <th className="border p-2 w-12">#</th>
-                    <th className="border p-2">Question Specimen</th>
-                    <th className="border p-2">Standard Specimen</th>
-                    <th className="border p-2 w-24">Points</th>
-                    <th className="border p-2 w-32">Point Type</th>
-                    <th className="border p-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {forensicAnswerRows.map((row, idx) => (
-                    <tr key={idx}>
-                      <td className="border p-2 text-center font-medium">
-                        {idx + 1}
-                      </td>
-                      <td className="border p-2">
-                        <input
-                          className="w-full border px-2 py-1"
-                          value={row.questionSpecimen}
-                          onChange={(e) =>
-                            handleForensicRowChange(
-                              idx,
-                              "questionSpecimen",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Question Specimen"
-                          title="Question Specimen"
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <input
-                          className="w-full border px-2 py-1"
-                          value={row.standardSpecimen}
-                          onChange={(e) =>
-                            handleForensicRowChange(
-                              idx,
-                              "standardSpecimen",
-                              e.target.value
-                            )
-                          }
-                          placeholder="Standard Specimen"
-                          title="Standard Specimen"
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <input
-                          className="w-full border px-2 py-1 text-center"
-                          type="number"
-                          min={1}
-                          value={row.points}
-                          onChange={(e) =>
-                            handleForensicRowChange(
-                              idx,
-                              "points",
-                              Number(e.target.value)
-                            )
-                          }
-                          placeholder="Points"
-                          title="Points for this row"
-                        />
-                      </td>
-                      <td className="border p-2">
-                        <select
-                          className="w-full border px-2 py-1 text-xs"
-                          value={row.pointType || ""}
-                          onChange={(e) =>
-                            handleForensicRowChange(
-                              idx,
-                              "pointType",
-                              e.target.value
-                            )
-                          }
-                          title="each = points per correct answer, both = points only if all answers correct"
-                        >
-                          <option value="" disabled>
-                            Point type
-                          </option>
-                          <option value="each">for each correct</option>
-                          <option value="both">if both correct</option>
-                        </select>
-                      </td>
-                      <td className="border p-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveForensicRow(idx)}
-                          disabled={forensicAnswerRows.length === 1}
-                        >
-                          Remove
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddForensicRow}
-              className="flex items-center gap-1 mt-2"
-            >
-              <PlusCircle className="h-4 w-4" /> Add Row
-            </Button>
-          </div>
-
-          <div className="space-y-3 border-t pt-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Rubric Weights (%)</Label>
-              <div className={`text-xs font-medium ${
-                rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100
-                  ? 'text-gray-600'
-                  : 'text-red-600'
-              }`}>Total: {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}%</div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <Label className="text-xs font-semibold text-blue-900">Completeness</Label>
-                <Input type="number" min={0} max={100} value={rubrics.findingsSimilarity} onChange={e => setRubrics({ ...rubrics, findingsSimilarity: Number(e.target.value) })} className="h-8 text-sm font-bold text-center" />
-                <div className="text-xs text-blue-700">conclusion + keywords</div>
-              </div>
-              <div className="space-y-1.5 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <Label className="text-xs font-semibold text-amber-900">Objectivity</Label>
-                <Input type="number" min={0} max={100} value={rubrics.objectivity} onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})} className="h-8 text-sm font-bold text-center" />
-                <div className="text-xs text-amber-700">no subjective words</div>
-              </div>
-              <div className="space-y-1.5 p-3 bg-green-50 rounded-lg border border-green-200">
-                <Label className="text-xs font-semibold text-green-900">Structure</Label>
-                <Input type="number" min={0} max={100} value={rubrics.structure} onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})} className="h-8 text-sm font-bold text-center" />
-                <div className="text-xs text-green-700">reasoning words</div>
-              </div>
-            </div>
-            {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure !== 100 && (
-              <div className="text-sm text-red-600">
-                Rubric weights must add up to exactly 100%.
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <Label htmlFor="explanation">Explanation/Findings</Label>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="explanation-points" className="text-sm">
-                  Points:
-                </Label>
-                <Input
-                  id="explanation-points"
-                  type="number"
-                  min={0}
-                  className="w-20 h-8"
-                  value={explanationPoints}
-                  onChange={(e) => setExplanationPoints(Number(e.target.value))}
-                />
+              <div className="space-y-2">
+                <Label htmlFor="difficulty" className="text-sm font-medium">Difficulty Level <span className="text-red-500">*</span></Label>
+                <Select
+                  value={form.difficulty}
+                  onValueChange={(v) => handleFormChange("difficulty", v)}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
+                    <SelectItem value="expert">Expert</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Forensic Conclusion</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={
-                    forensicConclusion === "fake" ? "default" : "outline"
-                  }
-                  onClick={() => setForensicConclusion("fake")}
-                  className="flex-1"
-                >
-                  Not Written by Same Person
-                </Button>
-                <Button
-                  type="button"
-                  variant={
-                    forensicConclusion === "real" ? "default" : "outline"
-                  }
-                  onClick={() => setForensicConclusion("real")}
-                  className="flex-1"
-                >
-                  Written by Same Person
-                </Button>
+              <Label htmlFor="title" className="text-sm font-medium">Question Title <span className="text-red-500">*</span></Label>
+              <Input
+                id="title"
+                value={form.title}
+                onChange={(e) => handleFormChange("title", e.target.value)}
+                placeholder="Enter a title for your question"
+                className="h-9"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="question-text" className="text-sm font-medium">Instructions</Label>
+              <Textarea
+                id="question-text"
+                value={form.text}
+                onChange={(e) => handleFormChange("text", e.target.value)}
+                placeholder="Enter the full question text here..."
+                rows={4}
+                className="text-sm"
+              />
+            </div>
+          </div>
+
+          {/* PART 2: EVIDENCE MANAGEMENT */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-green-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Evidence Specimens</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-6">
+              {/* Standard Specimen Images Column */}
+              <div className="space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <Label className="text-sm font-semibold text-green-900 block mb-3">Standard Specimen Images</Label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    multiple
+                    ref={standardImageInputRef}
+                    onChange={(e) => handleImageChange(e, "standard")}
+                    className="text-xs text-gray-600"
+                  />
+                  <div className="text-xs text-green-700 mt-2">Max 15 images, 10MB each (PNG/JPEG)</div>
+                </div>
+                
+                {standardImageFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">
+                        Standard Specimens ({standardImageFiles.length})
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleClearImages} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2 bg-gray-50">
+                      {standardPreviews.map((url, index) => (
+                        <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
+                          <img src={url} alt={`s-${index}`} className="h-16 object-contain" />
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, "standard")} className="text-xs h-6">Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Question Specimen Images Column */}
+              <div className="space-y-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <Label className="text-sm font-semibold text-blue-900 block mb-3">Question Specimen Images</Label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    multiple
+                    ref={questionImageInputRef}
+                    onChange={(e) => handleImageChange(e, "question")}
+                    className="text-xs text-gray-600"
+                  />
+                  <div className="text-xs text-blue-700 mt-2">Max 15 images, 10MB each (PNG/JPEG)</div>
+                </div>
+                
+                {questionImageFiles.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">
+                        Question Specimens ({questionImageFiles.length})
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" onClick={handleClearImages} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2 bg-gray-50">
+                      {questionPreviews.map((url, index) => (
+                        <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
+                          <img src={url} alt={`q-${index}`} className="h-16 object-contain" />
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveImage(index, "question")} className="text-xs h-6">Remove</Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* PART 3: ANSWER KEY & GRADING */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-purple-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Answer Key</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">Define how specimens compare and assign points per row</p>
+                <div className="text-sm font-semibold text-purple-600">
+                  Total Points: {forensicAnswerRows.reduce((sum, row) => {
+                    const rowPoints = Number(row.points) || 1;
+                    const pointType = row.pointType || "both";
+                    // count columns other than points/pointType to mirror scoring logic in TakeExam
+                    const columns = Object.keys(row).filter(col => !["points", "pointType"].includes(col));
+                    if (pointType === "each") {
+                      return sum + rowPoints * Math.max(1, columns.length);
+                    } else {
+                      return sum + rowPoints;
+                    }
+                  }, 0)}
+                </div>
+              </div>
+
+              <div className="max-h-[280px] overflow-auto border rounded-lg bg-gray-50">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 bg-gray-100 border-b">
+                    <tr>
+                      <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-32">Point Type</th>
+                      <th className="p-3 text-center font-semibold text-gray-700 w-20">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forensicAnswerRows.map((row, idx) => (
+                      <tr key={idx} className="border-b hover:bg-white">
+                        <td className="p-3 text-center font-medium text-gray-700">{idx + 1}</td>
+                        <td className="p-2">
+                          <input
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            value={row.questionSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
+                            placeholder="e.g., slant, pressure"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            value={row.standardSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
+                            placeholder="e.g., slant, pressure"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            className="w-full border rounded px-2 py-1 text-center text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            type="number"
+                            min={1}
+                            value={row.points}
+                            onChange={(e) => handleForensicRowChange(idx, "points", Number(e.target.value))}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <select
+                            className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                            value={row.pointType || "each"}
+                            onChange={(e) => handleForensicRowChange(idx, "pointType", e.target.value)}
+                          >
+                            <option value="each">for each correct</option>
+                            <option value="both">if both correct</option>
+                          </select>
+                        </td>
+                        <td className="p-2 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveForensicRow(idx)}
+                            disabled={forensicAnswerRows.length === 1}
+                            className="h-7 text-xs"
+                          >
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddForensicRow}
+                className="w-full flex items-center justify-center gap-2 h-9"
+              >
+                <PlusCircle className="h-4 w-4" /> Add Row
+              </Button>
+
+              {/* Keywords Subsection */}
+              <div className="space-y-3 border-t pt-4 mt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Keywords (Optional)</h4>
+                </div>
+                
+                {selectedKeywordPool ? (
+                  <div className="border rounded-lg p-4 bg-indigo-50 border-indigo-200">
+                    <div className="flex justify-between items-start gap-3">
+                      <div className="flex-1">
+                        <h5 className="font-semibold text-indigo-900 mb-1">
+                          {selectedKeywordPool.name}
+                        </h5>
+                        {selectedKeywordPool.description && (
+                          <p className="text-sm text-gray-600 mb-3">{selectedKeywordPool.description}</p>
+                        )}
+                        <div className="space-y-2">
+                          <div>
+                            <div className="text-xs font-semibold text-indigo-900 mb-2">Selected Keywords</div>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedKeywords.length > 0 ? (
+                                selectedKeywords.map((keyword, index) => (
+                                  <span key={index} className="px-3 py-1 bg-indigo-200 text-indigo-900 text-xs font-medium rounded-full flex items-center gap-2">
+                                    {keyword}
+                                    <button onClick={() => setSelectedKeywords(selectedKeywords.filter(k => k !== keyword))} className="hover:text-red-600">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-gray-500 italic">No keywords selected</span>
+                              )}
+                            </div>
+                          </div>
+                          {selectedKeywordPool.keywords.filter(k => !selectedKeywords.includes(k)).length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-indigo-900 mb-2">Available Keywords</div>
+                              <div className="flex flex-wrap gap-1">
+                                {selectedKeywordPool.keywords
+                                  .filter(keyword => !selectedKeywords.includes(keyword))
+                                  .map((keyword, index) => (
+                                    <button
+                                      key={index}
+                                      onClick={() => setSelectedKeywords([...selectedKeywords, keyword])}
+                                      className="px-3 py-1 bg-white border border-indigo-300 text-indigo-700 text-xs font-medium rounded-full hover:bg-indigo-100 transition"
+                                    >
+                                      + {keyword}
+                                    </button>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedKeywordPool(null);
+                          setSelectedKeywords([]);
+                        }}
+                        className="text-gray-400 hover:text-red-500 h-8 w-8 p-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsKeywordPoolManagerOpen(true)}
+                    className="w-full h-9 flex items-center justify-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Select Keyword Pool
+                  </Button>
+                )}
+                <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                  Optionally select keywords to guide answer evaluation and provide expected terminology.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PART 4: GRADING CRITERIA */}
+          <div className="space-y-4 border-t pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="h-1 w-8 bg-amber-500 rounded"></div>
+              <h3 className="text-lg font-semibold text-gray-900">Forensic Conclusion & Explanation</h3>
+            </div>
+            
+            {/* Rubric Weights Subsection */}
+            <div className="space-y-3 bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm font-semibold text-amber-900">Rubric Weights (%)</Label>
+                <div className={`text-xs font-bold px-2 py-1 rounded ${rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure === 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {rubrics.findingsSimilarity + rubrics.objectivity + rubrics.structure}% / 100%
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2 p-3 bg-white rounded-lg border border-amber-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                    <Label className="text-xs font-semibold text-gray-900">Completeness</Label>
+                  </div>
+                  <Input 
+                    type="number" 
+                    min={0} 
+                    max={100} 
+                    value={rubrics.findingsSimilarity} 
+                    onChange={e => setRubrics({ ...rubrics, findingsSimilarity: Number(e.target.value) })} 
+                    className="h-8 text-sm font-bold text-center text-blue-600" 
+                  />
+                  <div className="text-xs text-gray-600">conclusion + keywords</div>
+                </div>
+                <div className="space-y-2 p-3 bg-white rounded-lg border border-amber-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+                    <Label className="text-xs font-semibold text-gray-900">Objectivity</Label>
+                  </div>
+                  <Input 
+                    type="number" 
+                    min={0} 
+                    max={100} 
+                    value={rubrics.objectivity} 
+                    onChange={e => setRubrics({...rubrics, objectivity: Number(e.target.value)})} 
+                    className="h-8 text-sm font-bold text-center text-amber-600" 
+                  />
+                  <div className="text-xs text-gray-600">no subjective words</div>
+                </div>
+                <div className="space-y-2 p-3 bg-white rounded-lg border border-amber-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <Label className="text-xs font-semibold text-gray-900">Structure</Label>
+                  </div>
+                  <Input 
+                    type="number" 
+                    min={0} 
+                    max={100} 
+                    value={rubrics.structure} 
+                    onChange={e => setRubrics({...rubrics, structure: Number(e.target.value)})} 
+                    className="h-8 text-sm font-bold text-center text-green-600" 
+                  />
+                  <div className="text-xs text-gray-600">reasoning words</div>
+                </div>
               </div>
             </div>
 
-            <Textarea
-              id="explanation"
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              placeholder="Enter an expected explanation or evidence you want to see.."
-              rows={4}
-            />
-            <div className="text-sm text-muted-foreground">
-              Select the main conclusion and add an expected explanation or key phrases .
+            {/* Forensic Conclusion & Explanation Subsection */}
+            <div className="space-y-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
+              <Label className="text-sm font-semibold text-teal-900 block">Forensic Conclusion & Explanation</Label>
+              
+              <div className="space-y-2">
+                <Label className="text-xs font-medium text-gray-700">Conclusion Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={forensicConclusion === "fake" ? "default" : "outline"}
+                    onClick={() => setForensicConclusion("fake")}
+                    className="flex-1 h-9 text-sm"
+                  >
+                    Not Written By The Same Person
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={forensicConclusion === "real" ? "default" : "outline"}
+                    onClick={() => setForensicConclusion("real")}
+                    className="flex-1 h-9 text-sm"
+                  >
+                    Written By The Same Person
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="explanation" className="text-xs font-medium text-gray-700">Expected Explanation</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="explanation-points" className="text-xs font-medium text-gray-700">Points:</Label>
+                    <Input
+                      id="explanation-points"
+                      type="number"
+                      min={0}
+                      className="w-16 h-8 text-center text-xs"
+                      value={explanationPoints}
+                      onChange={(e) => setExplanationPoints(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <Textarea
+                  id="explanation"
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  placeholder="Enter expected evidence, findings, or key phrases to look for..."
+                  rows={3}
+                  className="text-sm"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -918,6 +908,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
         selectMode={true}
       />
     </Dialog>
+    </>
   );
 };
 
