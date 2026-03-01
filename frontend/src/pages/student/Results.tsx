@@ -455,6 +455,14 @@ const Results = () => {
         let columns: string[] = [];
         if (rowDetails.length > 0 && rowDetails[0].columnScores) {
           columns = Object.keys(rowDetails[0].columnScores);
+          // ensure standard specimen column is shown before question specimen
+          if (columns.includes("standardSpecimen") && columns.includes("questionSpecimen")) {
+            columns = [
+              "standardSpecimen",
+              "questionSpecimen",
+              ...columns.filter(c => !["standardSpecimen", "questionSpecimen"].includes(c)),
+            ];
+          }
         }
 
         if (columns.length > 0 && rowDetails.length > 0) {
@@ -1269,6 +1277,14 @@ const Results = () => {
 
                                             if (rowDetails.length > 0 && rowDetails[0].columnScores) {
                                               columns = Object.keys(rowDetails[0].columnScores);
+                                              // ensure standard specimen column comes before question specimen
+                                              if (columns.includes("standardSpecimen") && columns.includes("questionSpecimen")) {
+                                                columns = [
+                                                  "standardSpecimen",
+                                                  "questionSpecimen",
+                                                  ...columns.filter(c => !["standardSpecimen","questionSpecimen"].includes(c)),
+                                                ];
+                                              }
                                               console.log('Extracted columns from rowDetails:', columns);
                                             }
                                           }
@@ -1330,6 +1346,14 @@ const Results = () => {
                                       // derive columns from specimens if we haven't gotten them already
                                       if (columns.length === 0 && specimens.length > 0) {
                                         columns = Object.keys(specimens[0]).filter(k => !['points', 'pointType'].includes(k));
+                                        // reorder for clarity: standard left, question right
+                                        if (columns.includes("standardSpecimen") && columns.includes("questionSpecimen")) {
+                                          columns = [
+                                            "standardSpecimen",
+                                            "questionSpecimen",
+                                            ...columns.filter(c => !["standardSpecimen", "questionSpecimen"].includes(c)),
+                                          ];
+                                        }
                                         console.log('Derived columns from specimens (' + specimenSource + '):', columns);
                                       }
 
@@ -1337,7 +1361,7 @@ const Results = () => {
                                       return (
                                         <div className="space-y-4">
                                           <h3 className="text-lg font-medium mt-4">Answer Table</h3>
-                                          <div className="overflow-x-auto border rounded-lg">
+                                          <div className="overflow-x-auto border-2 border-blue-300 rounded-lg">
                                             <Table className="min-w-full">
                                               <TableHeader>
                                                 <TableRow>

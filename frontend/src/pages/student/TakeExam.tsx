@@ -166,7 +166,8 @@ const MultiImageDisplay = ({
       <div className="flex justify-end mb-2">
         <Button
           size="sm"
-          variant="ghost"
+          variant="secondary"
+          className="font-semibold border-2"
           onClick={() => setUseScrollMode((v) => !v)}
         >
           {useScrollMode ? "Switch to paginated" : "Switch to vertical scroll"}
@@ -201,7 +202,7 @@ const MultiImageDisplay = ({
       {useScrollMode ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* scrollable panels for each side (vertical list) */}
-          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px]">
+          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px] border-2 border-blue-300 rounded-md shadow-md">
             {standardImages.length > 0 ? (
               standardImages.map((img, idx) => (
                 <div key={`std-scroll-${idx}`} className="w-full">
@@ -212,7 +213,7 @@ const MultiImageDisplay = ({
               <div className="p-6 text-center text-sm text-gray-500">No image</div>
             )}
           </div>
-          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px]">
+          <div className="flex flex-col overflow-y-auto gap-2 p-2 max-h-[400px] border-2 border-blue-300 rounded-md shadow-md">
             {questionImages.length > 0 ? (
               questionImages.map((img, idx) => (
                 <div key={`q-scroll-${idx}`} className="w-full">
@@ -228,7 +229,7 @@ const MultiImageDisplay = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col items-center">
             <div className="text-xs font-medium mb-1">{stdCount > 0 ? `SS${leftStdIndex + 1}` : `QS1`}</div>
-            <div className="w-full border rounded-md p-2">
+            <div className="w-full border-2 border-blue-300 rounded-md p-2 shadow-md">
               {leftSrc ? <ImageFullScreen src={leftSrc} alt={`left-img`} label={stdCount>0?`SS${leftStdIndex+1}`:'QP'} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
             </div>
 
@@ -240,7 +241,7 @@ const MultiImageDisplay = ({
 
           <div className="flex flex-col items-center">
             <div className="text-xs font-medium mb-1">{qCount > 0 ? `QS${rightQIndex + 1}` : `SS1`}</div>
-            <div className="w-full border rounded-md p-2">
+            <div className="w-full border-2 border-blue-300 rounded-md p-2 shadow-md">
               {rightSrc ? <ImageFullScreen src={rightSrc} alt={`right-img`} label={qCount>0?`QS${rightQIndex+1}`:'SP'} /> : <div className="p-6 text-center text-sm text-gray-500">No image</div>}
             </div>
 
@@ -278,6 +279,7 @@ const TakeExam = () => {
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const submitNowRef = useRef<() => Promise<void> | null>(null);
+  const exitCounterRef = useRef(0); // counts ESC presses or fullscreen exits
 
   // Try to request fullscreen; returns true on success
   const tryRequestFullscreen = async () => {
@@ -328,6 +330,18 @@ const TakeExam = () => {
           // Do not re-request fullscreen in this case.
           return;
         }
+
+        // count fullscreen exits; if 3 or more, auto-submit
+        exitCounterRef.current = (exitCounterRef.current || 0) + 1;
+        if (exitCounterRef.current >= 3) {
+          try {
+            submitNowRef.current && submitNowRef.current();
+          } catch (e) {
+            console.error('Auto-submit after fullscreen exits failed', e);
+          }
+          return;
+        }
+
         // Try to immediately re-request fullscreen; if blocked, show prompt
         requestFullscreen().then((ok) => {
           if (!ok) {
@@ -340,14 +354,55 @@ const TakeExam = () => {
     // Attempt fullscreen on mount
     requestFullscreen();
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    // keydown handler: block reloads and handle Escape as exit press
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Block Ctrl+R / Cmd+R and F5
+      const isR = e.key === 'r' || e.key === 'R';
+      const isF5 = e.key === 'F5';
+      const isMetaR = (e.metaKey || e.ctrlKey) && isR;
+      if (isMetaR || isF5) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          // Inform user
+          toast({ title: 'Action blocked', description: 'Reload is disabled during the exam.', variant: 'destructive', duration: 3000 });
+        } catch {}
+        return;
+      }
+
+      // Escape -> increment exit counter and auto-submit after 3 presses
+      if (e.key === 'Escape') {
+        exitCounterRef.current = (exitCounterRef.current || 0) + 1;
+        try {
+          toast({ title: 'Warning', description: `Escape pressed ${exitCounterRef.current}/3 — exam will auto-submit after 3.`, variant: 'destructive', duration: 2500 });
+        } catch {}
+        if (exitCounterRef.current >= 3) {
+          try {
+            submitNowRef.current && submitNowRef.current();
+          } catch (err) {
+            console.error('Auto-submit after Escape failed', err);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener('keydown', handleKeyDown);
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
         countdownIntervalRef.current = null;
       }
     };
   }, [toast]);
+
+  // Reset exit counter when user re-enters fullscreen or when exam ends/submits
+  useEffect(() => {
+    if (document.fullscreenElement) {
+      exitCounterRef.current = 0;
+    }
+  }, [isFullscreen]);
 
   // Prevent accidental navigation
   useBeforeUnload((event) => {
@@ -1234,7 +1289,15 @@ const TakeExam = () => {
       console.error("Error parsing forensic answer:", error);
       rows = [];
     }
-    const cols = rows.length > 0 ? Object.keys(rows[0]).filter((col) => !["points", "pointType"].includes(col)) : [];
+    let cols = rows.length > 0 ? Object.keys(rows[0]).filter((col) => !["points", "pointType"].includes(col)) : [];
+    // ensure standard specimen appears left of question specimen
+    if (cols.includes("standardSpecimen") && cols.includes("questionSpecimen")) {
+      cols = [
+        "standardSpecimen",
+        "questionSpecimen",
+        ...cols.filter(c => !["standardSpecimen", "questionSpecimen"].includes(c)),
+      ];
+    }
     return { forensicRows: rows, columns: cols };
   }, [question?.answer]);
 

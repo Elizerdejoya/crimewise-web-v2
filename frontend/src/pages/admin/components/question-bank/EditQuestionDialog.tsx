@@ -501,7 +501,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-3">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="bg-green-50 border-2 border-green-500 rounded-lg p-3">
                   <Label className="text-sm font-semibold text-green-900 block mb-3">Standard Specimen Images</Label>
                   <input
                     type="file"
@@ -521,7 +521,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                       </span>
                       <Button variant="ghost" size="sm" onClick={() => { setStandardImages([]); setQuestionImages([]); }} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border-2 border-gray-400 p-2 rounded">
                       {standardImages.map((url, index) => (
                         <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
                           <img src={url} alt={`s-${index}`} className="h-20 object-contain" />
@@ -533,7 +533,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                 )}
               </div>
               <div className="space-y-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-3">
                   <Label className="text-sm font-semibold text-blue-900 block mb-3">Question Specimen Images</Label>
                   <input
                     type="file"
@@ -553,7 +553,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                       </span>
                       <Button variant="ghost" size="sm" onClick={() => { setStandardImages([]); setQuestionImages([]); }} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto border-2 border-gray-400 p-2 rounded">
                       {questionImages.map((url, index) => (
                         <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
                           <img src={url} alt={`q-${index}`} className="h-20 object-contain" />
@@ -596,8 +596,8 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                   <thead className="sticky top-0 bg-gray-100 border-b">
                     <tr>
                       <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
-                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                       <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-32">Point Type</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-20">Action</th>
@@ -610,16 +610,16 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
                         <td className="p-2">
                           <input
                             className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            value={row.questionSpecimen}
-                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
+                            value={row.standardSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
                             placeholder="e.g., slant, pressure"
                           />
                         </td>
                         <td className="p-2">
                           <input
                             className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            value={row.standardSpecimen}
-                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
+                            value={row.questionSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
                             placeholder="e.g., slant, pressure"
                           />
                         </td>
@@ -758,7 +758,7 @@ const EditQuestionDialog: React.FC<EditQuestionDialogProps> = ({
           <div className="space-y-4 border-t pt-6">
             <div className="flex items-center gap-2 mb-4">
               <div className="h-1 w-8 bg-amber-500 rounded"></div>
-              <h3 className="text-lg font-semibold text-gray-900">Grading Criteria</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Forensic Conclusion & Explanation</h3>
             </div>
 
             <div className="space-y-4">

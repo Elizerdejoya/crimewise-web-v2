@@ -237,7 +237,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                     <Label className="text-sm font-medium text-green-900">Standard Specimen Images ({imageGroups.standardImages.length})</Label>
                     <div className="grid grid-cols-2 gap-2">
                       {imageGroups.standardImages.map((imgUrl, index) => (
-                        <div key={`std-${index}`} className="rounded-lg border border-gray-200 overflow-hidden">
+                        <div key={`std-${index}`} className="rounded-lg border-2 border-green-400 overflow-hidden shadow-sm">
                           <img src={imgUrl} alt={`Standard ${index + 1}`} className="w-full h-24 object-cover" />
                         </div>
                       ))}
@@ -250,7 +250,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                     <Label className="text-sm font-medium text-blue-900">Question Specimen Images ({imageGroups.questionImages.length})</Label>
                     <div className="grid grid-cols-2 gap-2">
                       {imageGroups.questionImages.map((imgUrl, index) => (
-                        <div key={`q-${index}`} className="rounded-lg border border-gray-200 overflow-hidden">
+                        <div key={`q-${index}`} className="rounded-lg border-2 border-blue-400 overflow-hidden shadow-sm">
                           <img src={imgUrl} alt={`Question ${index + 1}`} className="w-full h-24 object-cover" />
                         </div>
                       ))}
@@ -280,8 +280,8 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                     <thead className="sticky top-0 bg-gray-100 border-b">
                       <tr>
                         <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
-                        <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                         <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                        <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                         <th className="p-3 text-center font-semibold text-gray-700 w-24">Point Type</th>
                         <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
                       </tr>
@@ -290,8 +290,8 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
                       {forensicData.specimens.map((row, idx) => (
                         <tr key={idx} className="border-b hover:bg-white">
                           <td className="p-3 text-center font-medium text-gray-700">{idx + 1}</td>
-                          <td className="p-3 text-gray-800">{row.questionSpecimen}</td>
                           <td className="p-3 text-gray-800">{row.standardSpecimen}</td>
+                          <td className="p-3 text-gray-800">{row.questionSpecimen}</td>
                           <td className="p-3 text-center text-xs text-gray-700 font-medium">
                             <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded whitespace-nowrap">
                               {row.pointType === "both" ? "if both correct" : "for each correct"}
@@ -344,7 +344,7 @@ const ViewQuestionDialog: React.FC<ViewQuestionDialogProps> = ({
           <div className="space-y-4 border-t pt-6">
             <div className="flex items-center gap-2 mb-4">
               <div className="h-1 w-8 bg-amber-500 rounded"></div>
-              <h3 className="text-lg font-semibold text-gray-900">Grading Criteria</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Forensic Conclusion & Explanation</h3>
             </div>
 
             {rubricsObj && (

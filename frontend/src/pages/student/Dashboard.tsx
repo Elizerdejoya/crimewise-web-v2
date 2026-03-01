@@ -24,6 +24,7 @@ const StudentDashboard = () => {
   const [upcomingExams, setUpcomingExams] = useState<any[]>([]);
   const [recentResults, setRecentResults] = useState<any[]>([]);
   const [aiScores, setAiScores] = useState<Record<string, number | null>>({});
+  const [showMissed, setShowMissed] = useState(false); // toggle between available/upcoming and missed exams
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -161,10 +162,51 @@ const StudentDashboard = () => {
     }
   });
 
-  const visibleUpcoming = (upcomingExams || []).filter((exam: any) => {
+  // split upcomingExams (not taken) into available (not ended) and missed (ended)
+  const now = new Date();
+  const untaken = (upcomingExams || []).filter((exam: any) => {
     const examId = exam.id != null ? Number(exam.id) : null;
     return examId != null && !takenExamIds.has(examId);
   });
+  const availableExams = untaken.filter((exam: any) => {
+    // use end date if available, otherwise use start
+    if (exam.end) {
+      return now <= new Date(exam.end);
+    }
+    if (exam.start) {
+      return new Date(exam.start) >= now;
+    }
+    return true;
+  });
+  const missedExams = untaken
+    .filter((exam: any) => {
+      if (exam.end) {
+        return now > new Date(exam.end);
+      }
+      if (exam.start) {
+        return new Date(exam.start) < now;
+      }
+      return false;
+    })
+    .sort((a: any, b: any) => {
+      // Sort by start date descending (most recent first)
+      const dateA = a.start ? new Date(a.start).getTime() : 0;
+      const dateB = b.start ? new Date(b.start).getTime() : 0;
+      return dateB - dateA;
+    })
+    .slice(0, 3); // Limit to last 3 missed exams
+  const visibleUpcoming = showMissed ? missedExams : availableExams;
+
+  const formatDate = (dateStr?: string | null) => {
+    if (!dateStr) return "-";
+    try {
+      const d = new Date(dateStr);
+      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+      return d.toLocaleDateString('en-US', options);
+    } catch (e) {
+      try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -216,16 +258,32 @@ const StudentDashboard = () => {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle>Upcoming Exams</CardTitle>
-                <CardDescription>Scheduled in the next 7 days</CardDescription>
+                <CardTitle>{showMissed ? 'Missed Exams' : 'Available Exams'}</CardTitle>
+                <CardDescription>
+                  {showMissed
+                    ? 'Exams whose access period has ended and weren\'t taken'
+                    : 'Exams you can still access (not yet taken or still open)'}
+                </CardDescription>
               </div>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <button
+                  className={`text-xs px-2 py-1 rounded cursor-pointer
+                    ${showMissed ? 'bg-green-500 text-white' : 'bg-green-600 text-white ring-2 ring-offset-1 ring-green-700'}`}
+                  onClick={() => setShowMissed(false)}
+                >Available</button>
+                <button
+                  className={`text-xs px-2 py-1 rounded cursor-pointer
+                    ${showMissed ? 'bg-red-600 text-white ring-2 ring-offset-1 ring-red-700' : 'bg-red-500 text-white'}`}
+                  onClick={() => setShowMissed(true)}
+                >Missed</button>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
                 {visibleUpcoming.length === 0 ? (
                   <div className="text-muted-foreground text-center">
-                    No upcoming exams
+                    {showMissed ? 'No missed exams' : 'No available exams'}
                   </div>
                 ) : (
                   visibleUpcoming.map((exam: any) => (
@@ -236,7 +294,8 @@ const StudentDashboard = () => {
                       <div>
                         <p className="font-medium">{exam.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {exam.start?.split("T")[0]} • {exam.duration} mins
+                          {exam.start ? formatDate(exam.start) : '-'}
+                          {exam.end ? ` - ${formatDate(exam.end)}` : ''} • {exam.duration} mins
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {exam.course_name || exam.course_code || "Course"}
@@ -245,7 +304,11 @@ const StudentDashboard = () => {
                           Instructor: {exam.instructor_name}
                         </p>
                       </div>
-                      <Button size="sm" onClick={() => navigate('/student/exams')}>Enter Token</Button>
+                      {showMissed ? (
+                        <span className="text-sm font-semibold text-red-600">Missed</span>
+                      ) : (
+                        <Button size="sm" onClick={() => navigate('/student/exams')}>Enter Token</Button>
+                      )}
                     </div>
                   ))
                 )}

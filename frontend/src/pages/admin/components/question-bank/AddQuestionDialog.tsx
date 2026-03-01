@@ -502,7 +502,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
             <div className="grid grid-cols-2 gap-6">
               {/* Standard Specimen Images Column */}
               <div className="space-y-3">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div className="bg-green-50 border-2 border-green-500 rounded-lg p-3">
                   <Label className="text-sm font-semibold text-green-900 block mb-3">Standard Specimen Images</Label>
                   <input
                     type="file"
@@ -523,7 +523,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                       </span>
                       <Button type="button" variant="ghost" size="sm" onClick={handleClearImages} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2 bg-gray-50">
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border-2 border-gray-400 p-2 bg-gray-50">
                       {standardPreviews.map((url, index) => (
                         <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
                           <img src={url} alt={`s-${index}`} className="h-16 object-contain" />
@@ -537,7 +537,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
 
               {/* Question Specimen Images Column */}
               <div className="space-y-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="bg-blue-50 border-2 border-blue-500 rounded-lg p-3">
                   <Label className="text-sm font-semibold text-blue-900 block mb-3">Question Specimen Images</Label>
                   <input
                     type="file"
@@ -558,7 +558,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                       </span>
                       <Button type="button" variant="ghost" size="sm" onClick={handleClearImages} className="text-red-600 hover:text-red-700 h-7 px-2">Clear</Button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border border-gray-200 p-2 bg-gray-50">
+                    <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto rounded border-2 border-gray-400 p-2 bg-gray-50">
                       {questionPreviews.map((url, index) => (
                         <div key={index} className="p-1 bg-white border rounded flex flex-col items-center gap-1">
                           <img src={url} alt={`q-${index}`} className="h-16 object-contain" />
@@ -602,8 +602,8 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                   <thead className="sticky top-0 bg-gray-100 border-b">
                     <tr>
                       <th className="p-3 text-left font-semibold text-gray-700 w-8">#</th>
-                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                       <th className="p-3 text-left font-semibold text-gray-700">Standard Specimen</th>
+                      <th className="p-3 text-left font-semibold text-gray-700">Question Specimen</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-20">Points</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-32">Point Type</th>
                       <th className="p-3 text-center font-semibold text-gray-700 w-20">Action</th>
@@ -616,16 +616,16 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
                         <td className="p-2">
                           <input
                             className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            value={row.questionSpecimen}
-                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
+                            value={row.standardSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
                             placeholder="e.g., slant, pressure"
                           />
                         </td>
                         <td className="p-2">
                           <input
                             className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
-                            value={row.standardSpecimen}
-                            onChange={(e) => handleForensicRowChange(idx, "standardSpecimen", e.target.value)}
+                            value={row.questionSpecimen}
+                            onChange={(e) => handleForensicRowChange(idx, "questionSpecimen", e.target.value)}
                             placeholder="e.g., slant, pressure"
                           />
                         </td>
@@ -827,7 +827,20 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
 
             {/* Forensic Conclusion & Explanation Subsection */}
             <div className="space-y-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
-              <Label className="text-sm font-semibold text-teal-900 block">Forensic Conclusion & Explanation</Label>
+              <div className="flex justify-between items-center">
+                <Label className="text-sm font-semibold text-teal-900">Forensic Conclusion & Explanation</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="explanation-points" className="text-xs font-medium text-gray-700">Points:</Label>
+                  <Input
+                    id="explanation-points"
+                    type="number"
+                    min={0}
+                    className="w-16 h-8 text-center text-xs"
+                    value={explanationPoints}
+                    onChange={(e) => setExplanationPoints(Number(e.target.value))}
+                  />
+                </div>
+              </div>
               
               <div className="space-y-2">
                 <Label className="text-xs font-medium text-gray-700">Conclusion Type</Label>
@@ -852,20 +865,7 @@ const AddQuestionDialog: React.FC<AddQuestionDialogProps> = ({
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="explanation" className="text-xs font-medium text-gray-700">Expected Explanation</Label>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="explanation-points" className="text-xs font-medium text-gray-700">Points:</Label>
-                    <Input
-                      id="explanation-points"
-                      type="number"
-                      min={0}
-                      className="w-16 h-8 text-center text-xs"
-                      value={explanationPoints}
-                      onChange={(e) => setExplanationPoints(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
+                <Label htmlFor="explanation" className="text-xs font-medium text-gray-700">Expected Explanation</Label>
                 <Textarea
                   id="explanation"
                   value={explanation}
