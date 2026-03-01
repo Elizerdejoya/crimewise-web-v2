@@ -1148,7 +1148,7 @@ const Results = () => {
                       </div>
                     </TableHead>
                   )}
-                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Status</TableHead>
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">{showMissedExams ? 'Status' : 'Actions'}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
