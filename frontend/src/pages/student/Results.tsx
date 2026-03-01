@@ -45,6 +45,10 @@ const Results = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedAiGrade, setSelectedAiGrade] = useState<any>(null);
+  const [showMissedExams, setShowMissedExams] = useState(false); // toggle between taken and missed exams
+  const [missedExams, setMissedExams] = useState<any[]>([]); // exams not yet taken
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   // cache questions keyed by exam_id so details view can fall back to question metadata
   const [questionCache, setQuestionCache] = useState<Record<string, any>>({});
 
@@ -111,6 +115,77 @@ const Results = () => {
     fetchStudentResults();
   }, []);
 
+  // Fetch all exams to determine which ones are missed
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    const decoded: JwtTokenPayload = jwtDecode(token);
+    const studentId = decoded.id;
+
+    // Use the updated upcoming endpoint which can return past exams when includePast=true
+    fetch(`${API_BASE_URL}/api/exams/student/${studentId}/upcoming?includePast=true`, {
+      headers: getAuthHeaders(),
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        const allExams = Array.isArray(data) ? data : [];
+        console.log('[DEBUG] Fetched exams (including past) from endpoint:', allExams);
+        
+        const takenExamIds = new Set(results.map(r => r.exam_id || r.examId));
+        console.log('[DEBUG] Taken exam IDs:', Array.from(takenExamIds));
+        
+        const now = new Date();
+        console.log('[DEBUG] Current time:', now.toISOString());
+        
+        // Filter for exams that:
+        // 1. Have NOT been taken (not in results)
+        // 2. Have a deadline/end date that has PASSED
+        const missedExams = allExams
+          .filter((exam: any) => {
+            const examId = exam.id != null ? Number(exam.id) : null;
+            
+            // Skip if exam is taken or no valid ID
+            if (!examId || takenExamIds.has(examId)) {
+              return false;
+            }
+            
+            // Exam must have an end date that is in the past
+            if (exam.end) {
+              const endDate = new Date(exam.end);
+              const isDeadlinePassed = now > endDate;
+              console.log(`[DEBUG] Exam ${exam.id} (${exam.name}): end=${exam.end}, now=${now.toISOString()}, deadlinePassed=${isDeadlinePassed}`);
+              return isDeadlinePassed;
+            }
+            
+            // Fallback: if end date doesn't exist, check start date
+            // An exam is missed if start date is in past AND exam hasn't been taken
+            if (exam.start) {
+              const startDate = new Date(exam.start);
+              const isStartedAndPassed = now > startDate;
+              console.log(`[DEBUG] Exam ${exam.id} (${exam.name}): start=${exam.start}, now=${now.toISOString()}, startedAndPassed=${isStartedAndPassed}`);
+              return isStartedAndPassed;
+            }
+            
+            console.log(`[DEBUG] Exam ${exam.id} (${exam.name}) has no start or end date`);
+            return false;
+          })
+          .sort((a: any, b: any) => {
+            const dateA = a.start ? new Date(a.start).getTime() : 0;
+            const dateB = b.start ? new Date(b.start).getTime() : 0;
+            return dateB - dateA; // Most recent first
+          });
+        
+        console.log('[DEBUG] Filtered missed exams:', missedExams);
+        setMissedExams(missedExams);
+      })
+      .catch(err => console.error('Error fetching missed exams:', err));
+  }, [results]);
+
+  // Reset pagination when toggling or searching
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [showMissedExams, searchTerm]);
+
   // when a result is selected, ensure we have the underlying question cached
   useEffect(() => {
     if (!selectedResult) return;
@@ -175,6 +250,48 @@ const Results = () => {
     }
   };
 
+  // Format date range (e.g., Jan 15, 2025 - Jan 20, 2025 7:00 pm)
+  const formatTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+      return d.toLocaleTimeString('en-US', options).toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const formatDateRange = (startStr: string | null | undefined, endStr: string | null | undefined): React.ReactNode => {
+    const start = formatDate(startStr);
+    if (!endStr) return <>{start}</>;
+    const endDay = formatDate(endStr);
+    const endTime = formatTime(endStr);
+
+    if (start === "-" && endDay === "-") return "-";
+    if (start === "-") {
+      return (
+        <>
+          -<br />
+          {endDay}
+          {endTime && (
+            <> <span className="text-[10px] italic text-muted-foreground">{endTime}</span></>
+          )}
+        </>
+      );
+    }
+    if (endDay === "-") return <>{start}</>;
+    return (
+      <>
+        {start} -<br />
+        {endDay}
+        {endTime && (
+          <> <span className="text-[10px] italic text-muted-foreground">{endTime}</span></>
+        )}
+      </>
+    );
+  };
+
   // Get findings max points from exam (default to 20 if not found)
   const getFindingsMaxPoints = (result: any) => {
     try {
@@ -226,18 +343,20 @@ const Results = () => {
     structure: "Structure / Reasoning (reasoning words)",
   };
 
-  // Search function
+  // Search function - updated to work with both taken and missed exams
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value.toLowerCase();
     setSearchTerm(term);
 
+    const sourceData = showMissedExams ? missedExams : results;
+
     if (term.trim() === "") {
-      setFilteredResults(results);
+      setFilteredResults(sourceData);
     } else {
-      const filtered = results.filter(result => {
-        const examName = (result.examName || result.exam_id || "").toString().toLowerCase();
-        const courseName = resolveCourseName(result.course || result.course_id).toString().toLowerCase();
-        const formattedDate = formatDate(result.date).toString().toLowerCase();
+      const filtered = sourceData.filter(result => {
+        const examName = (result.examName || result.exam_name || result.name || "").toString().toLowerCase();
+        const courseName = ((result.course_name || result.course_code || result.course || "")).toString().toLowerCase();
+        const formattedDate = (result.date ? formatDate(result.date) : (result.start ? formatDate(result.start) : "")).toString().toLowerCase();
         const score = (result.score || "").toString().toLowerCase();
 
         return examName.includes(term) || 
@@ -248,6 +367,37 @@ const Results = () => {
       setFilteredResults(filtered);
     }
   };
+
+  // Toggle between taken and missed exams
+  const handleToggleMissed = (show: boolean) => {
+    setShowMissedExams(show);
+    const sourceData = show ? missedExams : results;
+    
+    if (searchTerm.trim() === "") {
+      setFilteredResults(sourceData);
+    } else {
+      // Re-apply search on the new data source
+      const term = searchTerm.toLowerCase();
+      const filtered = sourceData.filter(result => {
+        const examName = (result.examName || result.exam_name || result.name || "").toString().toLowerCase();
+        const courseName = ((result.course_name || result.course_code || result.course || "")).toString().toLowerCase();
+        const formattedDate = (result.date ? formatDate(result.date) : (result.start ? formatDate(result.start) : "")).toString().toLowerCase();
+        const score = (result.score || "").toString().toLowerCase();
+
+        return examName.includes(term) || 
+               courseName.includes(term) || 
+               formattedDate.includes(term) ||
+               score.includes(term);
+      });
+      setFilteredResults(filtered);
+    }
+    setCurrentPage(1); // Reset to first page
+  };
+
+  // Pagination placeholders — will compute from processedResults later
+  // (kept here to preserve variable ordering while we compute the real values after processing)
+  let paginatedResults: any[] = [];
+  let totalPages = 0;
 
   // Sort function
   const handleSort = (key: string) => {
@@ -888,7 +1038,14 @@ const Results = () => {
     return 0;
   });
 
-  return (
+    // Compute pagination from processedResults so computed fields (examName, course) are present
+    (function computePagination() {
+      const startIdx = (currentPage - 1) * itemsPerPage;
+      totalPages = Math.max(1, Math.ceil(processedResults.length / itemsPerPage));
+      paginatedResults = processedResults.slice(startIdx, startIdx + itemsPerPage);
+    })();
+
+    return (
     <DashboardLayout>
       <div className="space-y-6">
         <div>
@@ -898,20 +1055,62 @@ const Results = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
-          <div className="flex items-center flex-1 sm:flex-none">
-            <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by exam name, course, or date..."
-              value={searchTerm}
-              onChange={handleSearch}
-              className="w-full sm:max-w-sm"
-            />
+        {/* Top Toolbar */}
+        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 rounded-lg mb-4">
+          {/* Left Section - Grouped Controls */}
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Search Input - Pill Shape */}
+            <div className="relative flex items-center min-w-0">
+              <Search className="absolute left-3 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by exam name, course..."
+                value={searchTerm}
+                onChange={handleSearch}
+                className="pl-10 pr-4 py-2 rounded-full bg-gray-50 border border-gray-200 hover:bg-gray-100 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              />
+            </div>
+
+            {/* Filter Toggle - Segmented Control */}
+            <div className="inline-flex items-center bg-gray-100 rounded-full p-1 gap-1">
+              <button
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                  !showMissedExams
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-transparent text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => handleToggleMissed(false)}
+              >
+                ✓ Taken
+              </button>
+              <button
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                  showMissedExams
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-transparent text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => handleToggleMissed(true)}
+              >
+                Missed
+              </button>
+            </div>
+
+            {/* Reload Button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleReload}
+              disabled={isReloading}
+              className="gap-2 rounded-full"
+            >
+              <RefreshCw className={`h-4 w-4 ${isReloading ? 'animate-spin' : ''}`} />
+              Reload
+            </Button>
           </div>
-          <Button size="sm" variant="outline" onClick={handleReload} disabled={isReloading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${isReloading ? 'animate-spin' : ''}`} />
-            Reload
-          </Button>
+
+          {/* Right Section - Count Display */}
+          <div className="text-sm text-muted-foreground ml-4 whitespace-nowrap">
+            {processedResults.length} exam result{processedResults.length !== 1 ? 's' : ''} found
+          </div>
         </div>
 
           <Card>
@@ -920,78 +1119,82 @@ const Results = () => {
                 <Table className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
-                  <TableHead className="text-center">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleSort('examName')}
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                    >
-                      <span className="flex items-center justify-center gap-1">Exam {getSortIcon('examName')}</span>
-                    </Button>
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+                    <div onClick={() => handleSort('examName')} className="flex items-center justify-center gap-2">
+                      <span>Exam</span>
+                      <span className="text-muted-foreground">{getSortIcon('examName')}</span>
+                    </div>
                   </TableHead>
-                  <TableHead className="text-center">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleSort('course')}
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                    >
-                      <span className="flex items-center justify-center gap-1">Course {getSortIcon('course')}</span>
-                    </Button>
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+                    <div onClick={() => handleSort('course')} className="flex items-center justify-center gap-2">
+                      <span>Course</span>
+                      <span className="text-muted-foreground">{getSortIcon('course')}</span>
+                    </div>
                   </TableHead>
-                  <TableHead className="text-center">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleSort('date')}
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                    >
-                      <span className="flex items-center justify-center gap-1">Date {getSortIcon('date')}</span>
-                    </Button>
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+                    <div onClick={() => handleSort('date')} className="flex items-center justify-center gap-2">
+                      <span>{showMissedExams ? 'Scheduled Date' : 'Date'}</span>
+                      <span className="text-muted-foreground">{getSortIcon('date')}</span>
+                    </div>
                   </TableHead>
-                  <TableHead className="text-center">
-                    <Button
-                      variant="ghost"
-                      onClick={() => handleSort('score')}
-                      className="h-auto p-0 font-semibold hover:bg-transparent"
-                    >
-                      <span className="flex items-center justify-center gap-1">Score {getSortIcon('score')}</span>
-                    </Button>
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">
+                    <span>Created By</span>
                   </TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
+                  {!showMissedExams && (
+                    <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+                      <div onClick={() => handleSort('score')} className="flex items-center justify-center gap-2">
+                        <span>Score</span>
+                        <span className="text-muted-foreground">{getSortIcon('score')}</span>
+                      </div>
+                    </TableHead>
+                  )}
+                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {processedResults.length > 0 ? (
-                    processedResults.map((result) => {
+                  {paginatedResults.length > 0 ? (
+                    paginatedResults.map((result) => {
                       const findingsMaxPts = getFindingsMaxPoints(result);
                       return (
                       <TableRow key={result.id}>
                         <TableCell className="font-medium text-center">{result.examName}</TableCell>
                         <TableCell className="text-center">{result.course}</TableCell>
-                        <TableCell className="text-center">{formatDate(result.date)}</TableCell>
-                              <TableCell>
-                                <div className="text-sm">
-                                  <div><span className="text-xs font-medium text-gray-700">Table:</span>{' '}
-                                    {result.totalPoints && result.totalPoints > 0
-                                      ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
-                                      : result.raw_score !== undefined && result.raw_total !== undefined
-                                        ? `${result.score}% (${result.raw_score}/${result.raw_total})`
-                                        : (result.score !== undefined ? `${result.score}%` : "-")}
-                                  </div>
-                                  <div className="mt-1"><span className="text-xs font-medium text-gray-700">Findings:</span>{' '}
-                                    {(() => {
-                                      const key = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
-                                      const v = aiScores[key];
-                                      if (v === undefined) return (<span className="text-sm text-gray-500">Loading...</span>);
-                                      if (v === null) return (<span className="text-sm text-gray-500">N/A</span>);
-                                      const pts = pointsFromPercent(v, findingsMaxPts);
-                                      return (<span className="font-semibold">{v}% {pts !== null ? `(${pts}/${findingsMaxPts})` : ''}</span>);
-                                    })()}
-                                  </div>
-                                </div>
-                              </TableCell>
+                        <TableCell className="text-center">{formatDateRange(result.start, result.end)}</TableCell>
+                        <TableCell className="text-center">{result.instructor_name || result.created_by || (result.instructor_id ? `Instructor ${result.instructor_id}` : '-')}</TableCell>
+                        {!showMissedExams && (
+                          <TableCell>
+                            <div className="text-sm">
+                              <div><span className="text-xs font-medium text-gray-700">Table:</span>{' '}
+                                {result.totalPoints && result.totalPoints > 0
+                                  ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
+                                  : result.raw_score !== undefined && result.raw_total !== undefined
+                                    ? `${result.score}% (${result.raw_score}/${result.raw_total})`
+                                    : (result.score !== undefined ? `${result.score}%` : "-")}
+                              </div>
+                              <div className="mt-1"><span className="text-xs font-medium text-gray-700">Findings:</span>{' '}
+                                {(() => {
+                                  const key = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
+                                  const v = aiScores[key];
+                                  if (v === undefined) return (<span className="text-sm text-gray-500">Loading...</span>);
+                                  if (v === null) return (<span className="text-sm text-gray-500">N/A</span>);
+                                  const pts = pointsFromPercent(v, findingsMaxPts);
+                                  return (<span className="font-semibold">{v}% {pts !== null ? `(${pts}/${findingsMaxPts})` : ''}</span>);
+                                })()}
+                              </div>
+                            </div>
+                          </TableCell>
+                        )}
                         <TableCell className="text-center">
-                          <div className="flex gap-2 justify-end">
-                            {(result.answer || result.details) && (
+                          {showMissedExams ? (
+                            <div className="flex items-center justify-center">
+                              <div className="inline-flex flex-col items-center gap-1">
+                                <span className="bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-full">Missed</span>
+                                <span className="text-xs text-red-600">Deadline passed</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2 justify-end items-center">
+                            {(result.answer || result.details) ? (
                               <Dialog>
                                   <DialogTrigger asChild>
                                   <Button
@@ -1658,15 +1861,18 @@ const Results = () => {
                                   </div>
                                 </DialogContent>
                               </Dialog>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => { await handlePrintExam(result); }}
-                            >
-                              <FileText className="h-4 w-4 mr-2" /> Print
-                            </Button>
-                          </div>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">Not taken</span>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => { await handlePrintExam(result); }}
+                              >
+                                <FileText className="h-4 w-4 mr-2" /> Print
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -1680,21 +1886,66 @@ const Results = () => {
                   )}
               </TableBody>
               </Table>
+              
+              {/* Pagination controls */}
+              {processedResults.length > 0 && (
+                <div className="flex items-center justify-between p-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages} ({processedResults.length} total)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>First</Button>
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>Prev</Button>
+
+                    {/* Page numbers - show a window of pages */}
+                    <div className="flex items-center gap-1">
+                      {(() => {
+                        const pages = [] as number[];
+                        const window = 2; // neighbors on each side
+                        const start = Math.max(1, currentPage - window);
+                        const end = Math.min(totalPages, currentPage + window);
+                        if (start > 1) pages.push(1);
+                        if (start > 2) pages.push(-1); // ellipsis marker
+                        for (let p = start; p <= end; p++) pages.push(p);
+                        if (end < totalPages - 1) pages.push(-1);
+                        if (end < totalPages) pages.push(totalPages);
+
+                        return pages.map((p, idx) => {
+                          if (p === -1) return <span key={`e-${idx}`} className="px-2">…</span>;
+                          const isCurrent = p === currentPage;
+                          return (
+                            <Button key={p} size="sm" variant={isCurrent ? undefined : 'outline'} className={isCurrent ? 'bg-primary text-white' : ''} onClick={() => setCurrentPage(p)}>
+                              {p}
+                            </Button>
+                          );
+                        });
+                      })()}
+                    </div>
+
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>Next</Button>
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>Last</Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Mobile list view */}
             <div className="block sm:hidden space-y-3 p-3">
-              {processedResults.length > 0 ? (
-                processedResults.map((result) => {
+              {paginatedResults.length > 0 ? (
+                paginatedResults.map((result) => {
                   const key = `${result.student_id || result.studentId}_${result.exam_id || result.examId}`;
                   return (
                     <div key={result.id} className="bg-white border rounded-lg p-3 shadow-sm">
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium truncate">{result.examName}</div>
-                              <div className="text-xs text-muted-foreground truncate">{result.course} • {formatDate(result.date)}</div>
+                          <div className="text-xs text-muted-foreground truncate">{result.course}</div>
+                          <div className="text-xs text-muted-foreground truncate mt-1">{result.instructor_name || result.created_by || (result.instructor_id ? `Instructor ${result.instructor_id}` : '-')}</div>
+                          <div className="text-xs text-muted-foreground">{formatDateRange(result.start, result.end)}</div>
+                          {!showMissedExams && (
+                            <>
                               <div className="text-xs mt-1 text-gray-700">
-                                <span className="font-medium">Table score:</span>{' '}
+                                <span className="font-medium">Table:</span>{' '}
                                 {result.totalPoints && result.totalPoints > 0
                                   ? `${result.score}% (${result.earnedPoints}/${result.totalPoints} pts)`
                                   : result.raw_score !== undefined && result.raw_total !== undefined
@@ -1712,25 +1963,68 @@ const Results = () => {
                                   return (<span className="font-semibold">{v}% {pts !== null ? `(${pts}/${findingsMaxPts})` : ''}</span>);
                                 })()}
                               </div>
+                            </>
+                          )}
                         </div>
                         
+                        {showMissedExams && (
+                          <div className="flex-shrink-0">
+                            <div className="inline-flex flex-col items-center gap-1">
+                              <span className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap">Missed</span>
+                              <span className="text-xs text-red-600">Deadline passed</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="mt-3 flex gap-2">
-                        {(result.answer || result.details) && (
-                          <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); const btn = triggerRefs.current[key]; if (btn) btn.click(); }}>
-                            <Eye className="h-4 w-4 mr-2" /> View Details
+                      {!showMissedExams && (
+                        <div className="mt-3 flex gap-2">
+                          {(result.answer || result.details) ? (
+                            <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); const btn = triggerRefs.current[key]; if (btn) btn.click(); }}>
+                              <Eye className="h-4 w-4 mr-2" /> View Details
+                            </Button>
+                          ) : (
+                            <div className="text-sm text-muted-foreground flex-1 text-center py-2">Not taken</div>
+                          )}
+                          <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await handlePrintExam(result); }}>
+                            <FileText className="h-4 w-4 mr-2" /> Print
                           </Button>
-                        )}
-                        <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await handlePrintExam(result); }}>
-                          <FileText className="h-4 w-4 mr-2" /> Print
-                        </Button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
               ) : (
                 <div className="text-center py-6 text-sm text-muted-foreground">{searchTerm ? "No results match your search." : "No results found."}</div>
+              )}
+              
+              {/* Mobile pagination controls */}
+              {processedResults.length > 0 && (
+                <div className="flex flex-col items-center gap-3 mt-4 pt-4 border-t">
+                  <div className="text-xs text-muted-foreground">
+                    Page {currentPage} of {totalPages} ({processedResults.length} total)
+                  </div>
+                  <div className="flex gap-2 w-full justify-center flex-wrap">
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="max-w-xs">First</Button>
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1} className="max-w-xs">Prev</Button>
+                    {(() => {
+                      const pages = [] as number[];
+                      const window = 1;
+                      const start = Math.max(1, currentPage - window);
+                      const end = Math.min(totalPages, currentPage + window);
+                      if (start > 1) pages.push(1);
+                      if (start > 2) pages.push(-1);
+                      for (let p = start; p <= end; p++) pages.push(p);
+                      if (end < totalPages - 1) pages.push(-1);
+                      if (end < totalPages) pages.push(totalPages);
+                      return pages.map((p, i) => p === -1 ? <span key={`e-${i}`} className="px-2">…</span> : (
+                        <Button key={p} size="sm" variant={p === currentPage ? undefined : 'outline'} className={p === currentPage ? 'bg-primary text-white' : ''} onClick={() => setCurrentPage(p)}>{p}</Button>
+                      ));
+                    })()}
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages} className="max-w-xs">Next</Button>
+                    <Button size="sm" variant="outline" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="max-w-xs">Last</Button>
+                  </div>
+                </div>
               )}
             </div>
           </CardContent>

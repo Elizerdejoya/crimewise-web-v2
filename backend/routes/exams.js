@@ -965,11 +965,13 @@ router.get(
           r.organization_id, r.percentage, r.status,
           e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
           e.token, e.class_id, e.instructor_id,
-          c.name as course_name, c.code as course_code
+          c.name as course_name, c.code as course_code,
+          u2.name as instructor_name
         FROM results r
         INNER JOIN exams e ON r.exam_id = e.id
         LEFT JOIN courses c ON e.course_id = c.id
         INNER JOIN users u ON r.student_id = u.id
+        LEFT JOIN users u2 ON e.instructor_id = u2.id
         WHERE r.student_id = ${studentId} AND u.organization_id = ${orgFilter.organizationId}
         ORDER BY COALESCE(r.submitted_at, r.date) DESC
       `;
@@ -982,10 +984,12 @@ router.get(
           r.organization_id, r.percentage, r.status,
           e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
           e.token, e.class_id, e.instructor_id,
-          c.name as course_name, c.code as course_code
+          c.name as course_name, c.code as course_code,
+          u2.name as instructor_name
         FROM results r
         INNER JOIN exams e ON r.exam_id = e.id
         LEFT JOIN courses c ON e.course_id = c.id
+        LEFT JOIN users u2 ON e.instructor_id = u2.id
         WHERE r.student_id = ${studentId}
         ORDER BY COALESCE(r.submitted_at, r.date) DESC
       `;
@@ -1482,8 +1486,10 @@ router.get(
       }
 
       // Get upcoming exams for the student's class
-      // Show exams that haven't ended yet (end >= now) and are scheduled for today or later
+      // By default only return exams whose end >= now, but if includePast=true passed
+      // then return all exams (so frontend can split into upcoming/missed itself).
       const now = new Date().toISOString();
+      const includePast = req.query.includePast === 'true';
       let rows;
       try {
         rows = await db.sql`
@@ -1501,7 +1507,7 @@ router.get(
         JOIN courses c ON e.course_id = c.id
         JOIN users u ON e.instructor_id = u.id
         WHERE e.class_id = ${student.class_id} 
-          AND e.end >= ${now}
+          AND (${includePast} OR e.end >= ${now})
           AND c.organization_id = ${student.organization_id}
         ORDER BY e.start ASC
       `;
@@ -1523,7 +1529,7 @@ router.get(
         JOIN courses c ON e.course_id = c.id
         JOIN users u ON e.created_by = u.id
         WHERE e.organization_id = ${student.organization_id}
-          AND e.updated_at >= ${now}
+          AND (${includePast} OR e.updated_at >= ${now})
         ORDER BY e.created_at ASC
       `;
       }

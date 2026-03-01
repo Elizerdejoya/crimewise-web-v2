@@ -79,8 +79,8 @@ const StudentDashboard = () => {
         });
       });
 
-    // Fetch upcoming exams for student using the new endpoint
-    authenticatedFetch(`${API_BASE_URL}/api/exams/student/${studentId}/upcoming`)
+    // Fetch upcoming exams including past ones so we can compute missed
+    authenticatedFetch(`${API_BASE_URL}/api/exams/student/${studentId}/upcoming?includePast=true`)
       .then((res) => {
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
@@ -88,13 +88,15 @@ const StudentDashboard = () => {
         return res.json();
       })
       .then((data) => {
-        setUpcomingExams(Array.isArray(data) ? data : []);
+        const allExams = Array.isArray(data) ? data : [];
+        console.log('[Dashboard DEBUG] Fetched exams including past:', allExams);
+        setUpcomingExams(allExams);
       })
       .catch((err) => {
-        console.error('Error fetching upcoming exams:', err);
+        console.error('Error fetching exams:', err);
         toast({
           title: "Error",
-          description: "Failed to fetch upcoming exams.",
+          description: "Failed to fetch exams.",
           variant: "destructive",
         });
       });
@@ -162,29 +164,42 @@ const StudentDashboard = () => {
     }
   });
 
-  // split upcomingExams (not taken) into available (not ended) and missed (ended)
+  // split upcomingExams (not taken) into available (next 7 days) and missed (past 7 days)
   const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const sevenDaysAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
   const untaken = (upcomingExams || []).filter((exam: any) => {
     const examId = exam.id != null ? Number(exam.id) : null;
     return examId != null && !takenExamIds.has(examId);
   });
+
   const availableExams = untaken.filter((exam: any) => {
-    // use end date if available, otherwise use start
-    if (exam.end) {
-      return now <= new Date(exam.end);
+    // Only show exams that start or end within the next 7 days (including today)
+    const hasEnd = exam.end ? new Date(exam.end) : null;
+    const hasStart = exam.start ? new Date(exam.start) : null;
+
+    if (hasEnd) {
+      // exam still open or will open within next week
+      return hasEnd >= now && hasEnd <= sevenDaysAhead;
     }
-    if (exam.start) {
-      return new Date(exam.start) >= now;
+    if (hasStart) {
+      return hasStart >= now && hasStart <= sevenDaysAhead;
     }
-    return true;
+    return false;
   });
+
   const missedExams = untaken
     .filter((exam: any) => {
-      if (exam.end) {
-        return now > new Date(exam.end);
+      const hasEnd = exam.end ? new Date(exam.end) : null;
+      const hasStart = exam.start ? new Date(exam.start) : null;
+      // exams that ended within the past week
+      if (hasEnd) {
+        return hasEnd < now && hasEnd >= sevenDaysAgo;
       }
-      if (exam.start) {
-        return new Date(exam.start) < now;
+      if (hasStart) {
+        // if no end date, consider start > a week ago and < now as missed
+        return hasStart < now && hasStart >= sevenDaysAgo;
       }
       return false;
     })
@@ -193,8 +208,7 @@ const StudentDashboard = () => {
       const dateA = a.start ? new Date(a.start).getTime() : 0;
       const dateB = b.start ? new Date(b.start).getTime() : 0;
       return dateB - dateA;
-    })
-    .slice(0, 3); // Limit to last 3 missed exams
+    });
   const visibleUpcoming = showMissed ? missedExams : availableExams;
 
   const formatDate = (dateStr?: string | null) => {
@@ -206,6 +220,35 @@ const StudentDashboard = () => {
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
+  };
+
+  const formatTime = (dateStr?: string | null) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+      return d.toLocaleTimeString('en-US', options).toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  };
+
+  // helper to build a range element showing start date on first line,
+  // then end date with time styled on second line
+  const formatDateRange = (startStr?: string | null, endStr?: string | null): React.ReactNode => {
+    const start = startStr ? formatDate(startStr) : "-";
+    if (!endStr) return <>{start}</>;
+    const endDay = formatDate(endStr);
+    const endTime = formatTime(endStr);
+    return (
+      <>
+        {start} -<br />
+        {endDay}
+        {endTime && (
+          <> <span className="text-[10px] italic text-muted-foreground">{endTime}</span></>
+        )}
+      </>
+    );
   };
 
   return (
@@ -294,8 +337,7 @@ const StudentDashboard = () => {
                       <div>
                         <p className="font-medium">{exam.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {exam.start ? formatDate(exam.start) : '-'}
-                          {exam.end ? ` - ${formatDate(exam.end)}` : ''} • {exam.duration} mins
+                          {formatDateRange(exam.start, exam.end)} • {exam.duration} mins
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {exam.course_name || exam.course_code || "Course"}
