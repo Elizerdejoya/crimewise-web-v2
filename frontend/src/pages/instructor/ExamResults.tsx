@@ -1095,7 +1095,8 @@ const ExamResults = () => {
         instructor_id: existingExam.instructor_id ?? existingExam.instructor ?? null,
         question_id: existingExam.question_id ?? existingExam.question ?? null,
         start: existingExam.start ?? null,
-        end: existingExam.end ?? null,
+        // allow instructor to override end date/time if edited
+        end: editingExam.end ?? existingExam.end ?? null,
         duration: existingExam.duration ?? null,
         status: existingExam.status ?? null,
       };
@@ -2290,6 +2291,32 @@ const ExamResults = () => {
                       value={editingExam.name || editingExam.examName || ""}
                       onChange={(e) => setEditingExam({ ...editingExam, name: e.target.value })}
                       className="col-span-3"
+                    />
+                  </div>
+
+                  {/* end date/time editable field */}
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="exam-end" className="text-right">
+                      End (date & time)
+                    </Label>
+                    <Input
+                      id="exam-end"
+                      type="datetime-local"
+                      className="col-span-3"
+                      value={(() => {
+                        if (!editingExam.end) return "";
+                        // stored value may be ISO/UTC; convert to local equivalent for the
+                        // datetime-local control so the clock matches what the user expects.
+                        const dt = new Date(editingExam.end);
+                        const offset = dt.getTimezoneOffset();
+                        const local = new Date(dt.getTime() - offset * 60000);
+                        return local.toISOString().slice(0,16);
+                      })()}
+                      onChange={(e) => {
+                        const val = e.target.value; // already in local YYYY-MM-DDTHH:mm format
+                        // keep as-is; backend will interpret it in Asia/Manila timezone
+                        setEditingExam({ ...editingExam, end: val || null });
+                      }}
                     />
                   </div>
                 </div>
