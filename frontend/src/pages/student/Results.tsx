@@ -36,7 +36,10 @@ const getAuthHeaders = () => {
   };
 };
 
+import { useNavigate } from "react-router-dom";
+
 const Results = () => {
+  const navigate = useNavigate();
   const [results, setResults] = useState<any[]>([]);
     const [aiQueueMap, setAiQueueMap] = useState<Record<string, any>>({});
     const [requeueLoading, setRequeueLoading] = useState<Record<string, boolean>>({});
@@ -45,8 +48,11 @@ const Results = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedResult, setSelectedResult] = useState<any>(null);
   const [selectedAiGrade, setSelectedAiGrade] = useState<any>(null);
-  const [showMissedExams, setShowMissedExams] = useState(false); // toggle between taken and missed exams
+  // view mode: taken results, available upcoming/open exams, or missed (past but not taken)
+  const [viewMode, setViewMode] = useState<'taken' | 'available' | 'missed'>('taken');
+  const [showMissedExams, setShowMissedExams] = useState(false); // legacy flag, kept for compatibility
   const [missedExams, setMissedExams] = useState<any[]>([]); // exams not yet taken
+  const [availableExams, setAvailableExams] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   // cache questions keyed by exam_id so details view can fall back to question metadata
@@ -177,14 +183,62 @@ const Results = () => {
         
         console.log('[DEBUG] Filtered missed exams:', missedExams);
         setMissedExams(missedExams);
+
+        // compute available exams (not taken, deadline not passed)
+        const available = allExams
+          .filter((exam: any) => {
+            const examId = exam.id != null ? Number(exam.id) : null;
+            if (!examId || takenExamIds.has(examId)) return false;
+            const now = new Date();
+            // exclude past deadlines
+            if (exam.end) {
+              if (now > new Date(exam.end)) return false;
+            }
+            // include exams that are either open or not started yet
+            return true;
+          })
+          .map((exam: any) => {
+            const now = new Date();
+            const start = exam.start ? new Date(exam.start) : null;
+            const end = exam.end ? new Date(exam.end) : null;
+            let status: 'open' | 'not_started' | 'closed' = 'open';
+            if (start && now < start) {
+              status = 'not_started';
+            } else if (start && now >= start && end && now > end) {
+              status = 'closed';
+            }
+            return { ...exam, status };
+          })
+          .sort((a: any, b: any) => {
+            const aTime = a.start ? new Date(a.start).getTime() : 0;
+            const bTime = b.start ? new Date(b.start).getTime() : 0;
+            return bTime - aTime;
+          });
+        console.log('[DEBUG] Computed available exams:', available);
+        setAvailableExams(available);
+        if (viewMode === 'available') {
+          // apply any existing search term
+          if (searchTerm.trim() === "") {
+            setFilteredResults(available);
+          } else {
+            const term = searchTerm.toLowerCase();
+            const filtered = available.filter(item => {
+              const examName = (item.name || item.examName || "").toString().toLowerCase();
+              const courseName = ((item.course || item.course_name || item.course_code || "")).toString().toLowerCase();
+              const formattedDate = (item.start ? formatDate(item.start) : "").toString().toLowerCase();
+              return examName.includes(term) || courseName.includes(term) || formattedDate.includes(term);
+            });
+            setFilteredResults(filtered);
+          }
+        }
       })
       .catch(err => console.error('Error fetching missed exams:', err));
-  }, [results]);
+  }, [results, viewMode, searchTerm]);
 
-  // Reset pagination when toggling or searching
+  // Reset pagination when toggling mode or searching
   useEffect(() => {
     setCurrentPage(1);
-  }, [showMissedExams, searchTerm]);
+  }, [viewMode, searchTerm]);
 
   // when a result is selected, ensure we have the underlying question cached
   useEffect(() => {
@@ -238,13 +292,43 @@ const Results = () => {
     return typeof value === 'string' ? value : String(value);
   };
 
+  // Parse date string, treating timezone-less timestamps as Asia/Manila local time
+  const parseDateRespectingManila = (dateStr: string | null | undefined): Date | null => {
+    if (!dateStr) return null;
+    const s = String(dateStr);
+    // If string contains explicit timezone (Z or ±HH:MM), let Date handle it
+    if (/[Zz]|[+-]\d{2}:?\d{2}$/.test(s)) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // Try parse ISO-like without timezone: YYYY-MM-DDTHH:MM[:SS]
+    const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]) - 1;
+      const day = Number(m[3]);
+      const hh = Number(m[4]);
+      const mm = Number(m[5]);
+      const ss = Number(m[6] || '0');
+      // Treat the provided wall time as Asia/Manila (UTC+8). To get the correct UTC instant,
+      // compute UTC milliseconds for that wall time then subtract the +08:00 offset.
+      const manilaOffsetMs = 8 * 60 * 60 * 1000;
+      const utcMs = Date.UTC(y, mo, day, hh, mm, ss) - manilaOffsetMs;
+      const d = new Date(utcMs);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   // Format date for display (e.g., Nov 25, 2025)
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "-";
     try {
-      const date = new Date(dateStr);
-      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-      return date.toLocaleDateString('en-US', options);
+      const dateObj = parseDateRespectingManila(dateStr);
+      if (!dateObj) return String(dateStr).split('T')[0] || String(dateStr);
+      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
+      return dateObj.toLocaleDateString('en-US', options);
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
@@ -254,9 +338,10 @@ const Results = () => {
   const formatTime = (dateStr: string | null | undefined) => {
     if (!dateStr) return "";
     try {
-      const d = new Date(dateStr);
-      const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
-      return d.toLocaleTimeString('en-US', options).toLowerCase();
+      const dObj = parseDateRespectingManila(dateStr);
+      if (!dObj) return "";
+      const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
+      return dObj.toLocaleTimeString('en-US', options).toLowerCase();
     } catch (e) {
       return "";
     }
@@ -264,9 +349,10 @@ const Results = () => {
 
   const formatDateRange = (startStr: string | null | undefined, endStr: string | null | undefined): React.ReactNode => {
     const start = formatDate(startStr);
-    if (!endStr) return <>{start}</>;
+    const startTime = startStr ? formatTime(startStr) : "";
+    if (!endStr) return <>{start}{startTime ? <> <span className="text-[10px] italic text-muted-foreground">{startTime}</span></> : null}</>;
     const endDay = formatDate(endStr);
-    const endTime = formatTime(endStr);
+    const endTime = endStr ? formatTime(endStr) : "";
 
     if (start === "-" && endDay === "-") return "-";
     if (start === "-") {
@@ -280,14 +366,11 @@ const Results = () => {
         </>
       );
     }
-    if (endDay === "-") return <>{start}</>;
+    if (endDay === "-") return <>{start}{startTime ? <> <span className="text-[10px] italic text-muted-foreground">{startTime}</span></> : null}</>;
     return (
       <>
-        {start} -<br />
-        {endDay}
-        {endTime && (
-          <> <span className="text-[10px] italic text-muted-foreground">{endTime}</span></>
-        )}
+        {start}{startTime ? <> <span className="text-[10px] italic text-muted-foreground">{startTime}</span></> : null} -<br />
+        {endDay}{endTime ? <> <span className="text-[10px] italic text-muted-foreground">{endTime}</span></> : null}
       </>
     );
   };
@@ -343,21 +426,26 @@ const Results = () => {
     structure: "Structure / Reasoning (reasoning words)",
   };
 
-  // Search function - updated to work with both taken and missed exams
+  // Search function - updated to work with taken/missed/available modes
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const term = e.target.value.toLowerCase();
     setSearchTerm(term);
 
-    const sourceData = showMissedExams ? missedExams : results;
+    const getSource = () => {
+      if (viewMode === 'missed') return missedExams;
+      if (viewMode === 'available') return availableExams;
+      return results;
+    };
+    const sourceData = getSource();
 
     if (term.trim() === "") {
       setFilteredResults(sourceData);
     } else {
-      const filtered = sourceData.filter(result => {
-        const examName = (result.examName || result.exam_name || result.name || "").toString().toLowerCase();
-        const courseName = ((result.course_name || result.course_code || result.course || "")).toString().toLowerCase();
-        const formattedDate = (result.date ? formatDate(result.date) : (result.start ? formatDate(result.start) : "")).toString().toLowerCase();
-        const score = (result.score || "").toString().toLowerCase();
+      const filtered = sourceData.filter(item => {
+        const examName = (item.examName || item.exam_name || item.name || "").toString().toLowerCase();
+        const courseName = ((item.course_name || item.course_code || item.course || "")).toString().toLowerCase();
+        const formattedDate = (item.date ? formatDate(item.date) : (item.start ? formatDate(item.start) : "")).toString().toLowerCase();
+        const score = (item.score || "").toString().toLowerCase();
 
         return examName.includes(term) || 
                courseName.includes(term) || 
@@ -368,21 +456,23 @@ const Results = () => {
     }
   };
 
-  // Toggle between taken and missed exams
-  const handleToggleMissed = (show: boolean) => {
-    setShowMissedExams(show);
-    const sourceData = show ? missedExams : results;
-    
+  // Switch view mode buttons
+  const handleSwitchMode = (mode: 'taken' | 'available' | 'missed') => {
+    setViewMode(mode);
+    // maintain legacy flag for compatibility
+    setShowMissedExams(mode === 'missed');
+    const sourceData = mode === 'missed' ? missedExams : mode === 'available' ? availableExams : results;
+
     if (searchTerm.trim() === "") {
       setFilteredResults(sourceData);
     } else {
-      // Re-apply search on the new data source
+      // re-run search on new source
       const term = searchTerm.toLowerCase();
-      const filtered = sourceData.filter(result => {
-        const examName = (result.examName || result.exam_name || result.name || "").toString().toLowerCase();
-        const courseName = ((result.course_name || result.course_code || result.course || "")).toString().toLowerCase();
-        const formattedDate = (result.date ? formatDate(result.date) : (result.start ? formatDate(result.start) : "")).toString().toLowerCase();
-        const score = (result.score || "").toString().toLowerCase();
+      const filtered = sourceData.filter(item => {
+        const examName = (item.examName || item.exam_name || item.name || "").toString().toLowerCase();
+        const courseName = ((item.course_name || item.course_code || item.course || "")).toString().toLowerCase();
+        const formattedDate = (item.date ? formatDate(item.date) : (item.start ? formatDate(item.start) : "")).toString().toLowerCase();
+        const score = (item.score || "").toString().toLowerCase();
 
         return examName.includes(term) || 
                courseName.includes(term) || 
@@ -391,7 +481,7 @@ const Results = () => {
       });
       setFilteredResults(filtered);
     }
-    setCurrentPage(1); // Reset to first page
+    setCurrentPage(1);
   };
 
   // Pagination placeholders — will compute from processedResults later
@@ -904,96 +994,121 @@ const Results = () => {
   };
 
 
-  // Process results for display with sorting
-  const processedResults = [...filteredResults].map(result => {
-    // Parse scoring details from the details JSON field
-    let raw_score = result.raw_score;
-    let raw_total = result.raw_total;
-    let totalPoints = 0;
-    let earnedPoints = 0;
+  // Process results/items for display with sorting based on viewMode
+  let processedResults: any[] = [];
+  if (viewMode === 'taken') {
+    processedResults = [...filteredResults].map(result => {
+      // existing mapping for taken results (with scores etc.)
+      let raw_score = result.raw_score;
+      let raw_total = result.raw_total;
+      let totalPoints = 0;
+      let earnedPoints = 0;
 
-    // Try to extract score data from details field
-    if (result.details) {
-      try {
-        const detailsObj = typeof result.details === 'string' 
-          ? JSON.parse(result.details) 
-          : result.details;
-        
-        // Extract raw score and total from details (row-level scoring, NOT points)
-        if (detailsObj.raw_score !== undefined && detailsObj.raw_total !== undefined) {
-          raw_score = detailsObj.raw_score;
-          raw_total = detailsObj.raw_total;
-        }
-        
-        // Extract points-based scoring (totalScore and totalPossiblePoints)
-        // These include row points but NOT explanation points
-        if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
-          // totalScore and totalPossiblePoints already include all points
-          totalPoints = detailsObj.totalPossiblePoints;
-          earnedPoints = detailsObj.totalScore;
-        }
-        
-        // If totalPossiblePoints is still 0 but we have rowDetails, recalculate it
-        // This handles old exam results that might not have totalPossiblePoints stored correctly
-        if (totalPoints === 0 && detailsObj.rowDetails && Array.isArray(detailsObj.rowDetails)) {
-          totalPoints = detailsObj.rowDetails.reduce((sum: number, row: any) => {
-            return sum + (row.possiblePoints || 0);
-          }, 0);
-          
-          if (earnedPoints === 0 && detailsObj.totalScore !== undefined) {
+      if (result.details) {
+        try {
+          const detailsObj = typeof result.details === 'string' 
+            ? JSON.parse(result.details) 
+            : result.details;
+          if (detailsObj.raw_score !== undefined && detailsObj.raw_total !== undefined) {
+            raw_score = detailsObj.raw_score;
+            raw_total = detailsObj.raw_total;
+          }
+          if (detailsObj.totalScore !== undefined && detailsObj.totalPossiblePoints !== undefined) {
+            totalPoints = detailsObj.totalPossiblePoints;
             earnedPoints = detailsObj.totalScore;
           }
+          if (totalPoints === 0 && detailsObj.rowDetails && Array.isArray(detailsObj.rowDetails)) {
+            totalPoints = detailsObj.rowDetails.reduce((sum: number, row: any) => {
+              return sum + (row.possiblePoints || 0);
+            }, 0);
+            if (earnedPoints === 0 && detailsObj.totalScore !== undefined) {
+              earnedPoints = detailsObj.totalScore;
+            }
+          }
+        } catch (e) {
+          console.error("Error parsing details:", e);
         }
-      } catch (e) {
-        console.error("Error parsing details:", e);
       }
-    }
 
-    // Calculate percentage score using points system if available, otherwise raw score
-    let score = result.score;
-    
-    // If we have totalPoints (including row points), use that for percentage
-    if (totalPoints > 0) {
-      score = Math.round((earnedPoints / totalPoints) * 100);
-    }
-    // Otherwise, if we extracted raw_score and raw_total, calculate the percentage
-    else if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
-      score = Math.round((raw_score / raw_total) * 100);
-    }
+      let score = result.score;
+      if (totalPoints > 0) {
+        score = Math.round((earnedPoints / totalPoints) * 100);
+      } else if (raw_score !== undefined && raw_total !== undefined && raw_total > 0) {
+        score = Math.round((raw_score / raw_total) * 100);
+      }
 
-    const getCourseName = (r: any) => {
-      // First check if course name came directly from backend (course_name field)
-      if (r.course_name) return r.course_name;
-      if (r.course_code) return r.course_code;
+      const getCourseName = (r: any) => {
+        if (r.course_name) return r.course_name;
+        if (r.course_code) return r.course_code;
+        const cid = r.course || r.course_id;
+        if (!cid) return cid || '';
+        const found = courses.find((c) => String(c.id) === String(cid) || String(c.course_id) === String(cid) || String(c.name) === String(cid));
+        return found ? found.name || found.course || String(cid) : String(cid);
+      };
+
+      return {
+        ...result,
+        answer: result.answer,
+        details: result.details,
+        raw_score,
+        raw_total,
+        totalPoints,
+        earnedPoints,
+        score,
+        examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
+        course: getCourseName(result),
+      };
+    });
+  } else {
+    // missed or available exams map simple fields
+    processedResults = [...filteredResults].map((exam: any) => {
+      const id = exam.id || exam.exam_id;
       
-      // Otherwise look it up from courses array
-      const cid = r.course || r.course_id;
-      if (!cid) return cid || '';
-      const found = courses.find((c) => String(c.id) === String(cid) || String(c.course_id) === String(cid) || String(c.name) === String(cid));
-      return found ? found.name || found.course || String(cid) : String(cid);
-    };
+      // Resolve course name from multiple possible fields
+      let courseName = '';
+      if (exam.course_name) {
+        courseName = exam.course_name;
+      } else if (exam.course_code) {
+        courseName = exam.course_code;
+      } else if (exam.course) {
+        // Try resolving by course ID
+        const found = courses.find((c) => String(c.id) === String(exam.course) || String(c.course_id) === String(exam.course) || String(c.name) === String(exam.course));
+        courseName = found ? found.name || found.course || String(exam.course) : String(exam.course);
+      } else if (exam.course_id) {
+        // Try resolving by course_id
+        const found = courses.find((c) => String(c.id) === String(exam.course_id) || String(c.course_id) === String(exam.course_id) || String(c.name) === String(exam.course_id));
+        courseName = found ? found.name || found.course || String(exam.course_id) : String(exam.course_id);
+      }
+      
+      return {
+        ...exam,
+        examName: exam.name || `Exam ${id}`,
+        course: courseName,
+        start: exam.start,
+        end: exam.end,
+        instructor_name: exam.instructor_name || exam.created_by || (exam.instructor_id ? `Instructor ${exam.instructor_id}` : ''),
+        status: exam.status || (() => {
+          const now = new Date();
+          const start = exam.start ? new Date(exam.start) : null;
+          const end = exam.end ? new Date(exam.end) : null;
+          if (start && now < start) return 'not_started';
+          if (start && now >= start && (!end || now <= end)) return 'open';
+          return 'closed';
+        })(),
+      };
+    });
+  }
 
-    return {
-      ...result,
-      answer: result.answer,
-      details: result.details,
-      raw_score,
-      raw_total,
-      totalPoints,
-      earnedPoints,
-      score,
-      examName: result.examName || result.exam_name || result.name || resolveExamName(result.exam_id) || `Exam ${result.exam_id}`,
-      course: getCourseName(result),
-    };
-  }).sort((a, b) => {
+  // sort uniformly according to sortConfig where applicable
+  processedResults.sort((a, b) => {
     const { key = 'submitted_at', direction = 'desc' } = sortConfig || {};
     let aValue: any;
     let bValue: any;
 
     switch (key) {
       case 'submitted_at': {
-        const aTime = a.submitted_at || a.date || null;
-        const bTime = b.submitted_at || b.date || null;
+        const aTime = a.submitted_at || a.date || a.start || null;
+        const bTime = b.submitted_at || b.date || b.start || null;
         aValue = aTime ? new Date(aTime).getTime() : 0;
         bValue = bTime ? new Date(bTime).getTime() : 0;
         break;
@@ -1007,8 +1122,8 @@ const Results = () => {
         bValue = b.course?.toLowerCase() || '';
         break;
       case 'date':
-        aValue = new Date(a.date || 0).getTime();
-        bValue = new Date(b.date || 0).getTime();
+        aValue = new Date(a.date || a.start || 0).getTime();
+        bValue = new Date(b.date || b.start || 0).getTime();
         break;
       case 'score':
         aValue = a.score || 0;
@@ -1025,16 +1140,13 @@ const Results = () => {
       return direction === 'asc' ? 1 : -1;
     }
 
-    // Primary values equal — tie-break by submitted_at (most recent first)
-    const aTie = a.submitted_at ? new Date(a.submitted_at).getTime() : (a.date ? new Date(a.date).getTime() : 0);
-    const bTie = b.submitted_at ? new Date(b.submitted_at).getTime() : (b.date ? new Date(b.date).getTime() : 0);
+    // tie-break
+    const aTie = a.submitted_at ? new Date(a.submitted_at).getTime() : (a.date ? new Date(a.date).getTime() : (a.start ? new Date(a.start).getTime() : 0));
+    const bTie = b.submitted_at ? new Date(b.submitted_at).getTime() : (b.date ? new Date(b.date).getTime() : (b.start ? new Date(b.start).getTime() : 0));
     if (aTie !== bTie) return aTie < bTie ? 1 : -1;
-
-    // Final tie-break by numeric id (higher = newer)
     const aId = Number(a.id ?? a.result_id ?? a.exam_id ?? 0);
     const bId = Number(b.id ?? b.result_id ?? b.exam_id ?? 0);
     if (!Number.isNaN(aId) && !Number.isNaN(bId) && aId !== bId) return aId < bId ? 1 : -1;
-
     return 0;
   });
 
@@ -1049,7 +1161,7 @@ const Results = () => {
     <DashboardLayout>
       <div className="space-y-6">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">My Results</h2>
+          <h2 className="text-3xl font-bold tracking-tight">My Exams</h2>
           <p className="text-muted-foreground">
             View and analyze your exam performance
           </p>
@@ -1070,25 +1182,35 @@ const Results = () => {
               />
             </div>
 
-            {/* Filter Toggle - Segmented Control */}
+            {/* Filter Toggle - Segmented Control (Taken / Available / Missed) */}
             <div className="inline-flex items-center bg-gray-100 rounded-full p-1 gap-1">
               <button
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                  !showMissedExams
+                  viewMode === 'taken'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-transparent text-gray-600 hover:text-gray-900'
                 }`}
-                onClick={() => handleToggleMissed(false)}
+                onClick={() => handleSwitchMode('taken')}
               >
                 ✓ Taken
               </button>
               <button
                 className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
-                  showMissedExams
+                  viewMode === 'available'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'bg-transparent text-gray-600 hover:text-gray-900'
+                }`}
+                onClick={() => handleSwitchMode('available')}
+              >
+                Available
+              </button>
+              <button
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 whitespace-nowrap ${
+                  viewMode === 'missed'
                     ? 'bg-red-600 text-white shadow-sm'
                     : 'bg-transparent text-gray-600 hover:text-gray-900'
                 }`}
-                onClick={() => handleToggleMissed(true)}
+                onClick={() => handleSwitchMode('missed')}
               >
                 Missed
               </button>
@@ -1109,7 +1231,7 @@ const Results = () => {
 
           {/* Right Section - Count Display */}
           <div className="text-sm text-muted-foreground ml-4 whitespace-nowrap">
-            {processedResults.length} exam result{processedResults.length !== 1 ? 's' : ''} found
+            {processedResults.length} exam{processedResults.length !== 1 ? 's' : ''} found
           </div>
         </div>
 
@@ -1133,22 +1255,33 @@ const Results = () => {
                   </TableHead>
                   <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
                     <div onClick={() => handleSort('date')} className="flex items-center justify-center gap-2">
-                      <span>{showMissedExams ? 'Scheduled Date' : 'Date'}</span>
+                      <span>{viewMode === 'missed' ? 'Scheduled Date' : 'Date'}</span>
                       <span className="text-muted-foreground">{getSortIcon('date')}</span>
                     </div>
                   </TableHead>
                   <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">
                     <span>Created By</span>
                   </TableHead>
-                  {!showMissedExams && (
-                    <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
-                      <div onClick={() => handleSort('score')} className="flex items-center justify-center gap-2">
-                        <span>Score</span>
-                        <span className="text-muted-foreground">{getSortIcon('score')}</span>
-                      </div>
-                    </TableHead>
+                  {viewMode === 'taken' && (
+                    <>
+                      <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold cursor-pointer">
+                        <div onClick={() => handleSort('score')} className="flex items-center justify-center gap-2">
+                          <span>Score</span>
+                          <span className="text-muted-foreground">{getSortIcon('score')}</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Actions</TableHead>
+                    </>
                   )}
-                  <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">{showMissedExams ? 'Status' : 'Actions'}</TableHead>
+                  {viewMode === 'available' && (
+                    <>
+                      <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Status</TableHead>
+                      <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Actions</TableHead>
+                    </>
+                  )}
+                  {viewMode === 'missed' && (
+                    <TableHead className="text-center bg-gray-100 text-xs uppercase tracking-wide font-semibold">Status</TableHead>
+                  )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1161,7 +1294,7 @@ const Results = () => {
                         <TableCell className="text-center">{result.course}</TableCell>
                         <TableCell className="text-center">{formatDateRange(result.start, result.end)}</TableCell>
                         <TableCell className="text-center">{result.instructor_name || result.created_by || (result.instructor_id ? `Instructor ${result.instructor_id}` : '-')}</TableCell>
-                        {!showMissedExams && (
+                        {viewMode === 'taken' && (
                           <TableCell>
                             <div className="text-sm">
                               <div><span className="text-xs font-medium text-gray-700">Table:</span>{' '}
@@ -1184,17 +1317,43 @@ const Results = () => {
                             </div>
                           </TableCell>
                         )}
-                        <TableCell className="text-center">
-                          {showMissedExams ? (
-                            <div className="flex items-center justify-center">
-                              <div className="inline-flex flex-col items-center gap-1">
-                                <span className="bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-full">Missed</span>
-                                <span className="text-xs text-red-600">Deadline passed</span>
-                              </div>
+                        {viewMode === 'available' && (
+                          <TableCell className="text-center">
+                            <div className="flex justify-center">
+                              <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                                result.status === 'open'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {result.status === 'open' ? '✓ Open' : '⏳ Not Started'}
+                              </span>
                             </div>
-                          ) : (
-                            <div className="flex gap-2 justify-end items-center">
-                            {(result.answer || result.details) ? (
+                          </TableCell>
+                        )}
+                        {viewMode === 'available' && (
+                          <TableCell className="text-center">
+                            <Button 
+                              size="sm" 
+                              onClick={() => navigate('/student/exams')} 
+                              disabled={result.status !== 'open'}
+                              className={result.status === 'open' ? 'bg-blue-900 hover:bg-blue-950 text-white' : ''}
+                            >
+                              Enter
+                            </Button>
+                          </TableCell>
+                        )}
+                        {(viewMode === 'missed' || viewMode === 'taken') && (
+                          <TableCell className="text-center">
+                            {viewMode === 'missed' ? (
+                              <div className="flex items-center justify-center">
+                                <div className="inline-flex flex-col items-center gap-1">
+                                  <span className="bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-full">Missed</span>
+                                  <span className="text-xs text-red-600">Deadline passed</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex gap-2 justify-end items-center">
+                              {(result.answer || result.details) ? (
                               <Dialog>
                                   <DialogTrigger asChild>
                                   <Button
@@ -1203,7 +1362,7 @@ const Results = () => {
                                     ref={(el) => { triggerRefs.current[`${result.student_id || result.studentId}_${result.exam_id || result.examId}`] = el as HTMLButtonElement; }}
                                       onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); await fetchAiQueueForResults([result]); setSelectedResult(result); }}
                                   >
-                                    <Eye className="h-4 w-4 mr-2" /> View Details
+                                    <Eye className="h-4 w-4 mr-2" /> View Results
                                   </Button>
                                 </DialogTrigger>
                                 <DialogContent className="max-w-[98vw] w-full h-[95vh] sm:max-w-[800px] sm:h-auto max-h-[95vh] overflow-hidden flex flex-col">
@@ -1874,6 +2033,7 @@ const Results = () => {
                             </div>
                           )}
                         </TableCell>
+                      )}
                       </TableRow>
                     );
                     })
@@ -1942,7 +2102,18 @@ const Results = () => {
                           <div className="text-xs text-muted-foreground truncate">{result.course}</div>
                           <div className="text-xs text-muted-foreground truncate mt-1">{result.instructor_name || result.created_by || (result.instructor_id ? `Instructor ${result.instructor_id}` : '-')}</div>
                           <div className="text-xs text-muted-foreground">{formatDateRange(result.start, result.end)}</div>
-                          {!showMissedExams && (
+                          {viewMode === 'available' && (
+                            <div className="text-xs font-medium mt-1">
+                              <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${
+                                result.status === 'open'
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {result.status === 'open' ? '✓ Open' : '⏳ Not Started'}
+                              </span>
+                            </div>
+                          )}
+                          {viewMode === 'taken' && (
                             <>
                               <div className="text-xs mt-1 text-gray-700">
                                 <span className="font-medium">Table:</span>{' '}
@@ -1967,7 +2138,7 @@ const Results = () => {
                           )}
                         </div>
                         
-                        {showMissedExams && (
+                        {viewMode === 'missed' && (
                           <div className="flex-shrink-0">
                             <div className="inline-flex flex-col items-center gap-1">
                               <span className="bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap">Missed</span>
@@ -1977,11 +2148,11 @@ const Results = () => {
                         )}
                       </div>
 
-                      {!showMissedExams && (
+                      {viewMode === 'taken' ? (
                         <div className="mt-3 flex gap-2">
                           {(result.answer || result.details) ? (
                             <Button size="sm" variant="outline" className="flex-1" onClick={async () => { await fetchAiGradeForResult(result.student_id || result.studentId, result.exam_id || result.examId); const btn = triggerRefs.current[key]; if (btn) btn.click(); }}>
-                              <Eye className="h-4 w-4 mr-2" /> View Details
+                              <Eye className="h-4 w-4 mr-2" /> View Results
                             </Button>
                           ) : (
                             <div className="text-sm text-muted-foreground flex-1 text-center py-2">Not taken</div>
@@ -1990,7 +2161,18 @@ const Results = () => {
                             <FileText className="h-4 w-4 mr-2" /> Print
                           </Button>
                         </div>
-                      )}
+                      ) : viewMode === 'available' ? (
+                        <div className="mt-3 flex justify-center">
+                          <Button 
+                            size="sm" 
+                            onClick={() => navigate('/student/exams')} 
+                            disabled={result.status !== 'open'}
+                            className={result.status === 'open' ? 'bg-blue-900 hover:bg-blue-950 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
+                          >
+                            Enter Exam
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })
