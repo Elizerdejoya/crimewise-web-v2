@@ -19,7 +19,9 @@ import {
   Edit2,
   Copy,
   FileSpreadsheet,
-  FileText
+  FileText,
+  Calendar,
+  Clock
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { API_BASE_URL } from "@/lib/config";
@@ -89,6 +91,36 @@ const ExamResults = () => {
   const [selectedExam, setSelectedExam] = useState<any>(null);
   const [initialExamId, setInitialExamId] = useState<number | null>(null);
   const [editingExam, setEditingExam] = useState<any>(null);
+  // helper state for edit form date/time fields (mirrors CreateExam pattern)
+  const [editEndDate, setEditEndDate] = useState("");
+  const [editEndTime, setEditEndTime] = useState("");
+
+  // convert a timestamp string (which may be UTC or Manila-naive) into a
+  // Manila-local "YYYY-MM-DDTHH:mm" string. Backend stores UTC so we treat
+  // the input as UTC by default.
+  const utcToManilaLocal = (s: string): string => {
+    // parse components manually to avoid browser timezone quirks
+    const m = s.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      const [, Y, Mo, D, h, mi, sec = "00"] = m;
+      const utcDate = new Date(Date.UTC(Number(Y), Number(Mo) - 1, Number(D), Number(h), Number(mi), Number(sec)));
+      const manila = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${manila.getFullYear()}-${pad(manila.getMonth() + 1)}-${pad(manila.getDate())}T${pad(manila.getHours())}:${pad(manila.getMinutes())}`;
+    }
+    return "";
+  };
+
+  // when instructor clicks edit, convert the exam object so that its `end`
+  // property is already Manila‑local (YYYY-MM-DDTHH:mm) like the create form.
+  const prepareEditingExam = (exam: any) => {
+    if (exam && exam.end) {
+      const localized = utcToManilaLocal(String(exam.end));
+      setEditingExam({ ...exam, end: localized });
+    } else {
+      setEditingExam(exam);
+    }
+  };
   const [sortColumn, setSortColumn] = useState<string>("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -356,6 +388,26 @@ const ExamResults = () => {
     fetchCourses();
     fetchClasses();
   }, []);
+
+  // whenever an exam is loaded for editing update the helper fields so the
+  // inputs show the same values you originally entered.  `prepareEditingExam`
+  // already normalized `editingExam.end` to Manila‑local, so here we merely
+  // split that string.  Keeping the effect simple avoids looping.
+  useEffect(() => {
+    if (editingExam && editingExam.end) {
+      const m = String(editingExam.end).match(/(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+      if (m) {
+        setEditEndDate(m[1]);
+        setEditEndTime(m[2]);
+      } else {
+        setEditEndDate("");
+        setEditEndTime("");
+      }
+    } else {
+      setEditEndDate("");
+      setEditEndTime("");
+    }
+  }, [editingExam]);
 
   const fetchCourses = () => {
     const token = localStorage.getItem('token');
@@ -1085,8 +1137,31 @@ const ExamResults = () => {
     if (!editingExam) return;
 
     try {
+      const toBackendDatetime = (s: any) => {
+        if (s === null || s === undefined) return null;
+        if (typeof s !== 'string') return s;
+        const str = s.trim();
+        if (str === '') return null;
+        // If already contains timezone (Z or +HH or +HH:MM), return as-is
+        if (/[Zz]|[+-]\d{2}:?\d{2}$/.test(str)) return str;
+        // Match YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS
+        const m = str.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+        if (m) {
+          const sec = m[4] || '00';
+          // Append Manila offset so backend receives an unambiguous instant
+          return `${m[1]}T${m[2]}:${m[3]}:${sec}+08:00`;
+        }
+        return str;
+      };
       const existingExam = results.find(r => r.id === editingExam.id) || {};
       // prepare payload: keep all original required fields, only change name
+      // combine date/time fields into a single string like create exam does
+      let rawEnd: string | null = null;
+      if (editEndDate && editEndTime) {
+        rawEnd = `${editEndDate}T${editEndTime}`;
+      } else {
+        rawEnd = editingExam.end ?? existingExam.end ?? null;
+      }
       const payload: any = {
         name: editingExam.name ?? editingExam.examName ?? '',
         // preserve other attributes so backend validation passes
@@ -1095,8 +1170,8 @@ const ExamResults = () => {
         instructor_id: existingExam.instructor_id ?? existingExam.instructor ?? null,
         question_id: existingExam.question_id ?? existingExam.question ?? null,
         start: existingExam.start ?? null,
-        // allow instructor to override end date/time if edited
-        end: editingExam.end ?? existingExam.end ?? null,
+        // allow instructor to override end date/time if edited — normalize to ISO with +08:00
+        end: toBackendDatetime(rawEnd),
         duration: existingExam.duration ?? null,
         status: existingExam.status ?? null,
       };
@@ -1126,6 +1201,8 @@ const ExamResults = () => {
       }
 
       toast({ title: "Success", description: "Exam updated successfully" });
+      // refresh page so list view reflects any timing/status changes reliably
+      window.location.reload();
       // Update the exam in local state: merge returned fields or edited values
       let updatedExamData: any = existingExam;
       try {
@@ -1464,8 +1541,10 @@ const ExamResults = () => {
       if (!dateStr) return '-';
       try {
         const date = new Date(dateStr);
-        const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-        return date.toLocaleDateString('en-US', options);
+        // Backend stores Manila local time; add 8 hours to correct UTC offset
+        const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+        const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
+        return correctedDate.toLocaleDateString('en-US', options);
       } catch (e) {
         try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
       }
@@ -1529,7 +1608,7 @@ const ExamResults = () => {
           <div class="print-header"><img src="${topLogoUrl}" class="print-logo-top" alt="Top Logo" /></div>
           <h1>Exam Report — ${exam.name || exam.examName || 'Untitled'}</h1>
           <div class="info-grid">
-            <div class="info-item"><strong>Examination Date:</strong> ${formatDate(exam.start || exam.date)}${exam.end ? ` - ${formatDate(exam.end)}` : ''}</div>
+            <div class="info-item"><strong>Examination Date:</strong> ${formatDateRange(exam.start || exam.date, exam.end) }</div>
             <div class="info-item"><strong>Class:</strong> ${getClassName(exam) || exam.class || exam.class_id || '-'}</div>
             <div class="info-item"><strong>Course:</strong> ${getCourseName(exam) || exam.course || exam.course_name || exam.course_id || '-'}</div>
             <div class="info-item"><strong>Participants:</strong> ${exam.participants || 0}</div>
@@ -1651,11 +1730,54 @@ const ExamResults = () => {
     if (!dateStr) return "-";
     try {
       const date = new Date(dateStr);
-      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-      return date.toLocaleDateString('en-US', options);
+      // Backend stores Manila local time; add 8 hours to correct UTC offset
+      const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
+      return correctedDate.toLocaleDateString('en-US', options);
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
+  };
+
+  // Format time portion for display (e.g., 7:00 pm)
+  const formatTime = (dateStr: string | null | undefined) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      const correctedDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+      const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
+      return correctedDate.toLocaleTimeString('en-US', options).toLowerCase();
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const formatDateRange = (startStr: string | null | undefined, endStr: string | null | undefined): React.ReactNode => {
+    const start = formatDate(startStr);
+    const startTime = startStr ? formatTime(startStr) : "";
+    if (!endStr) return <>{start}{startTime ? <> <span className="text-[10px] italic">{startTime}</span></> : null}</>;
+    const endDay = formatDate(endStr);
+    const endTime = endStr ? formatTime(endStr) : "";
+
+    if (start === "-" && endDay === "-") return "-";
+    if (start === "-") {
+      return (
+        <>
+          -<br />
+          {endDay}
+          {endTime && (
+            <> <span className="text-[10px] italic">{endTime}</span></>
+          )}
+        </>
+      );
+    }
+    if (endDay === "-") return <>{start}{startTime ? <> <span className="text-[10px] italic">{startTime}</span></> : null}</>;
+    return (
+      <>
+        {start}{startTime ? <> <span className="text-[10px] italic">{startTime}</span></> : null} -<br />
+        {endDay}{endTime ? <> <span className="text-[10px] italic">{endTime}</span></> : null}
+      </>
+    );
   };
 
   // Prepare course-level series data for charts
@@ -1878,7 +2000,7 @@ const ExamResults = () => {
                   return;
                 }
                 const ex = results.find(r => r.id === selectedIds[0]);
-                if (ex) setEditingExam(ex);
+                if (ex) prepareEditingExam(ex);
               }}
             >
               <Edit2 className="mr-1 h-4 w-4" /> Edit
@@ -2089,9 +2211,9 @@ const ExamResults = () => {
                         <input className="accent-neutral-400" type="checkbox" checked={selectedIds.includes(exam.id)} onChange={() => toggleSelectRow(exam.id)} />
                       </TableCell>
                       <TableCell className="font-medium">{exam.name || exam.examName || "Untitled Exam"}</TableCell>
-                      <TableCell>{getClassName(exam) || exam.class || exam.class_id || '-'}</TableCell>
-                      <TableCell>{getCourseName(exam) || exam.course || exam.course_name || exam.course_id || '-'}</TableCell>
-                      <TableCell>{exam.end ? `${formatDate(exam.start || exam.date)} - ${formatDate(exam.end)}` : formatDate(exam.start || exam.date)}</TableCell>
+                      <TableCell className="text-xs">{getClassName(exam) || exam.class || exam.class_id || '-'}</TableCell>
+                      <TableCell className="text-xs">{getCourseName(exam) || exam.course || exam.course_name || exam.course_id || '-'}</TableCell>
+                      <TableCell className="text-xs">{exam.end ? formatDateRange(exam.start || exam.date, exam.end) : formatDate(exam.start || exam.date)}</TableCell>
                       {/* Avg Table Score */}
                       <TableCell className="hidden md:table-cell">{(() => {
                         try {
@@ -2132,7 +2254,7 @@ const ExamResults = () => {
                           <Button variant="ghost" size="icon" title="View Common Errors" onClick={() => setViewErrorsExam(exam)}>
                             <FileText className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" title="Edit" onClick={() => setEditingExam(exam)}>
+                          <Button variant="ghost" size="icon" title="Edit" onClick={() => prepareEditingExam(exam)}>
                             <PencilIcon className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" title="Delete" onClick={() => setSelectedExam(exam)}>
@@ -2294,30 +2416,43 @@ const ExamResults = () => {
                     />
                   </div>
 
-                  {/* end date/time editable field */}
+                  {/* end date/time editable fields (split like create exam) */}
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="exam-end" className="text-right">
-                      End (date & time)
-                    </Label>
-                    <Input
-                      id="exam-end"
-                      type="datetime-local"
-                      className="col-span-3"
-                      value={(() => {
-                        if (!editingExam.end) return "";
-                        // stored value may be ISO/UTC; convert to local equivalent for the
-                        // datetime-local control so the clock matches what the user expects.
-                        const dt = new Date(editingExam.end);
-                        const offset = dt.getTimezoneOffset();
-                        const local = new Date(dt.getTime() - offset * 60000);
-                        return local.toISOString().slice(0,16);
-                      })()}
-                      onChange={(e) => {
-                        const val = e.target.value; // already in local YYYY-MM-DDTHH:mm format
-                        // keep as-is; backend will interpret it in Asia/Manila timezone
-                        setEditingExam({ ...editingExam, end: val || null });
-                      }}
-                    />
+                    <Label className="text-right">End Date & Time</Label>
+                    <div className="col-span-3 grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="date"
+                          className="pl-8"
+                          value={editEndDate}
+                          onChange={(e) => {
+                            const d = e.target.value;
+                            setEditEndDate(d);
+                            if (editingExam) {
+                              const combined = d && editEndTime ? `${d}T${editEndTime}` : editingExam.end;
+                              setEditingExam({ ...editingExam, end: combined });
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="relative">
+                        <Clock className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          type="time"
+                          className="pl-8"
+                          value={editEndTime}
+                          onChange={(e) => {
+                            const t = e.target.value;
+                            setEditEndTime(t);
+                            if (editingExam) {
+                              const combined = editEndDate && t ? `${editEndDate}T${t}` : editingExam.end;
+                              setEditingExam({ ...editingExam, end: combined });
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
