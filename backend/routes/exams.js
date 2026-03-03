@@ -38,7 +38,9 @@ router.get(
             // Get exams with aggregated results data
             rows = await db.sql`
             SELECT 
-              e.*,
+              e.id, e.name, e.course_id, e.class_id, e.instructor_id, e.question_id, e.duration, e.token, e.organization_id, e.created,
+              (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+              (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
               COUNT(r.id) as participants,
               CASE 
                 WHEN COUNT(r.id) > 0 THEN ROUND(AVG(r.score), 2)
@@ -70,7 +72,9 @@ router.get(
           if (includeDetails === 'true') {
             rows = await db.sql`
             SELECT 
-              e.*,
+              e.id, e.name, e.course_id, e.class_id, e.instructor_id, e.question_id, e.duration, e.token, e.organization_id, e.created,
+              (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+              (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
               COUNT(r.id) as participants,
               CASE 
                 WHEN COUNT(r.id) > 0 THEN ROUND(AVG(r.score), 2)
@@ -102,7 +106,9 @@ router.get(
           if (includeDetails === 'true') {
             rows = await db.sql`
             SELECT 
-              e.*,
+              e.id, e.name, e.course_id, e.class_id, e.instructor_id, e.question_id, e.duration, e.token, e.organization_id, e.created,
+              (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+              (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
               COUNT(r.id) as participants,
               CASE 
                 WHEN COUNT(r.id) > 0 THEN ROUND(AVG(r.score), 2)
@@ -134,7 +140,9 @@ router.get(
           if (includeDetails === 'true') {
             rows = await db.sql`
             SELECT 
-              e.*,
+              e.id, e.name, e.course_id, e.class_id, e.instructor_id, e.question_id, e.duration, e.token, e.organization_id, e.created,
+              (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+              (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
               COUNT(r.id) as participants,
               CASE 
                 WHEN COUNT(r.id) > 0 THEN ROUND(AVG(r.score), 2)
@@ -963,8 +971,10 @@ router.get(
           r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
           r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
           r.organization_id, r.percentage, r.status,
-          e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
-          e.token, e.class_id, e.instructor_id,
+          e.id as exam_id_num, e.name, e.course_id, 
+          (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+          (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
+          e.duration, e.token, e.class_id, e.instructor_id,
           c.name as course_name, c.code as course_code,
           u2.name as instructor_name
         FROM results r
@@ -982,8 +992,10 @@ router.get(
           r.id, r.student_id, r.exam_id, r.score, r.date, r.answer, r.explanation,
           r.tab_switches, r.details, r.submitted_at, r.started_at, r.completed_at, 
           r.organization_id, r.percentage, r.status,
-          e.id as exam_id_num, e.name, e.course_id, e.start, e.end, e.duration, 
-          e.token, e.class_id, e.instructor_id,
+          e.id as exam_id_num, e.name, e.course_id, 
+          (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+          (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
+          e.duration, e.token, e.class_id, e.instructor_id,
           c.name as course_name, c.code as course_code,
           u2.name as instructor_name
         FROM results r
@@ -1097,14 +1109,20 @@ router.put(
 
       const result = await db.sql`
       UPDATE exams 
-      SET name = ${name}, 
-          course_id = ${courseId}, 
-          class_id = ${classId}, 
-          instructor_id = ${instructorId}, 
-          question_id = ${questionId}, 
-          start = ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
-          "end" = ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC', 
-          duration = ${duration}
+      SET name = COALESCE(${name}, name), 
+          course_id = COALESCE(${courseId}, course_id), 
+          class_id = COALESCE(${classId}, class_id), 
+          instructor_id = COALESCE(${instructorId}, instructor_id), 
+          question_id = COALESCE(${questionId}, question_id), 
+          start = COALESCE(
+                    ${start}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+                    start
+                  ), 
+          "end" = COALESCE(
+                    ${end}::timestamp AT TIME ZONE 'Asia/Manila' AT TIME ZONE 'UTC',
+                    "end"
+                  ), 
+          duration = COALESCE(${duration}, duration)
       WHERE id = ${examId}
     `;
 
@@ -1496,8 +1514,8 @@ router.get(
         SELECT 
           e.id,
           e.name,
-          e.start,
-          e.end,
+          (e.start AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+          (e."end" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
           e.duration,
           e.token,
           c.name as course_name,
@@ -1518,8 +1536,8 @@ router.get(
         SELECT 
           e.id,
           e.title as name,
-          e.created_at as start,
-          e.updated_at as end,
+          (e.created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as start,
+          (e.updated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila')::text as "end",
           e.duration_minutes as duration,
           NULL as token,
           c.name as course_name,
