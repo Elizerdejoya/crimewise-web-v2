@@ -95,20 +95,22 @@ const ExamResults = () => {
   const [editEndDate, setEditEndDate] = useState("");
   const [editEndTime, setEditEndTime] = useState("");
 
-  // convert a timestamp string (which may be UTC or Manila-naive) into a
-  // Manila-local "YYYY-MM-DDTHH:mm" string. Backend stores UTC so we treat
-  // the input as UTC by default.
+  // convert a timestamp string into a Manila-local "YYYY-MM-DDTHH:mm" string.
+  // This handles timestamps that may already be in Manila or UTC by using
+  // Intl.DateTimeFormat with the Asia/Manila time zone instead of manually
+  // adding offsets.
   const utcToManilaLocal = (s: string): string => {
-    // parse components manually to avoid browser timezone quirks
-    const m = s.match(/(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
-    if (m) {
-      const [, Y, Mo, D, h, mi, sec = "00"] = m;
-      const utcDate = new Date(Date.UTC(Number(Y), Number(Mo) - 1, Number(D), Number(h), Number(mi), Number(sec)));
-      const manila = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
-      const pad = (n: number) => String(n).padStart(2, "0");
-      return `${manila.getFullYear()}-${pad(manila.getMonth() + 1)}-${pad(manila.getDate())}T${pad(manila.getHours())}:${pad(manila.getMinutes())}`;
-    }
-    return "";
+    if (!s) return "";
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return "";
+    const fmt = (opts: Intl.DateTimeFormatOptions) =>
+      new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Manila", ...opts }).format(d);
+    const year = fmt({ year: "numeric" });
+    const month = fmt({ month: "2-digit" });
+    const day = fmt({ day: "2-digit" });
+    const hour = fmt({ hour: "2-digit", hour12: false });
+    const minute = fmt({ minute: "2-digit" });
+    return `${year}-${month}-${day}T${hour}:${minute}`;
   };
 
   // when instructor clicks edit, convert the exam object so that its `end`
@@ -1200,9 +1202,6 @@ const ExamResults = () => {
         throw new Error(errorData.message || "Failed to update exam");
       }
 
-      toast({ title: "Success", description: "Exam updated successfully" });
-      // refresh page so list view reflects any timing/status changes reliably
-      window.location.reload();
       // Update the exam in local state: merge returned fields or edited values
       let updatedExamData: any = existingExam;
       try {
@@ -1210,14 +1209,18 @@ const ExamResults = () => {
         if (json && json.id) {
           updatedExamData = { ...existingExam, ...json };
         } else {
-          updatedExamData = { ...existingExam, ...editingExam };
+          // Use the new end time that was edited
+          updatedExamData = { ...existingExam, end: rawEnd };
         }
       } catch (e) {
-        updatedExamData = { ...existingExam, ...editingExam };
+        // Use the new end time that was edited
+        updatedExamData = { ...existingExam, end: rawEnd };
       }
 
       setResults(results.map((exam) => exam.id === editingExam.id ? updatedExamData : exam));
       setEditingExam(null);
+      
+      toast({ title: "Success", description: "Exam updated successfully" });
     } catch (error: any) {
       toast({ title: "Error", description: error.message || "Failed to update exam", variant: "destructive" });
     } finally {
@@ -1541,10 +1544,9 @@ const ExamResults = () => {
       if (!dateStr) return '-';
       try {
         const date = new Date(dateStr);
-        // Backend stores Manila local time; add 8 hours to correct UTC offset
-        const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+        // convert to Manila timezone via Intl, no manual offset
         const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
-        return correctedDate.toLocaleDateString('en-US', options);
+        return date.toLocaleDateString('en-US', options);
       } catch (e) {
         try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
       }
@@ -1730,10 +1732,8 @@ const ExamResults = () => {
     if (!dateStr) return "-";
     try {
       const date = new Date(dateStr);
-      // Backend stores Manila local time; add 8 hours to correct UTC offset
-      const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
-      return correctedDate.toLocaleDateString('en-US', options);
+      return date.toLocaleDateString('en-US', options);
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
@@ -1744,9 +1744,8 @@ const ExamResults = () => {
     if (!dateStr) return "";
     try {
       const d = new Date(dateStr);
-      const correctedDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
-      return correctedDate.toLocaleTimeString('en-US', options).toLowerCase();
+      return d.toLocaleTimeString('en-US', options).toLowerCase();
     } catch (e) {
       return "";
     }
