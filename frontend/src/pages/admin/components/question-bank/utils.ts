@@ -181,7 +181,7 @@ export async function fetchKeywordPools(
 
 export async function deleteQuestions(
   ids: number[],
-  onSuccess: () => void,
+  onSuccess: (result?: any) => void,
   onError: (err: any) => void
 ) {
   try {
@@ -204,7 +204,31 @@ export async function deleteQuestions(
     if (res.ok) {
       const result = await res.json();
       console.log("Delete response:", result);
-      onSuccess();
+      
+      // Check if there are constraint errors or other failures
+      if (result.constraintErrors && result.constraintErrors.length > 0) {
+        // Partial deletion - some questions couldn't be deleted due to constraints
+        const error = new Error();
+        (error as any).constraintErrors = result.constraintErrors;
+        (error as any).deletedCount = result.deletedCount;
+        (error as any).totalProcessed = result.totalProcessed;
+        (error as any).message = `${result.deletedCount} of ${result.totalProcessed} question(s) deleted. ${result.constraintErrors.length} question(s) cannot be deleted because they are referenced by exams.`;
+        onError(error);
+      } else if (result.errors && result.errors.length > 0) {
+        // Other errors occurred
+        const error = new Error();
+        (error as any).errors = result.errors;
+        (error as any).message = `${result.deletedCount} of ${result.totalProcessed} question(s) deleted. ${result.errors.length} error(s) occurred.`;
+        onError(error);
+      } else if (result.deletedCount === 0 && result.totalProcessed > 0) {
+        // Nothing was deleted
+        const error = new Error();
+        (error as any).message = "No questions were deleted.";
+        onError(error);
+      } else {
+        // Full success
+        onSuccess(result);
+      }
     } else {
       console.error("Delete error status:", res.status);
       try {

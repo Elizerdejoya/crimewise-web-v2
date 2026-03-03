@@ -725,21 +725,59 @@ router.post(
         } catch (deleteErr) {
           console.error(
             `[QUESTIONS][BULK-DELETE] Error deleting question ${id}:`,
-            deleteErr.message
+            deleteErr.message,
+            deleteErr.code
           );
 
-          // Check for foreign key constraint error
-          if (
-            deleteErr.message &&
-            deleteErr.message.includes("FOREIGN KEY constraint failed")
-          ) {
+          // Check for foreign key constraint error - check multiple patterns
+          const isConstraintError = deleteErr.message && (
+            deleteErr.message.includes("FOREIGN KEY constraint failed") ||
+            deleteErr.message.includes("FOREIGN KEY") ||
+            deleteErr.message.includes("CONSTRAINT") ||
+            deleteErr.code === "SQLITE_CONSTRAINT"
+          );
+
+          if (isConstraintError) {
+            // Fetch question name and exams that reference this question
+            let questionName = `Question ${questionId}`;
+            let referencingExams = [];
+            try {
+              // Fetch question name
+              const questionQuery = await db.sql`
+                SELECT id, name, title FROM questions WHERE id = ${questionId}
+              `;
+              if (Array.isArray(questionQuery) && questionQuery.length > 0) {
+                questionName = questionQuery[0].name || questionQuery[0].title || `Question ${questionId}`;
+                console.log(
+                  `[QUESTIONS][BULK-DELETE] Found question name for ID ${questionId}:`,
+                  questionName
+                );
+              }
+
+              // Fetch referencing exams
+              const examsQuery = await db.sql`
+                SELECT id, name FROM exams WHERE question_id = ${questionId}
+              `;
+              referencingExams = Array.isArray(examsQuery) ? examsQuery : [];
+              console.log(
+                `[QUESTIONS][BULK-DELETE] Fetched ${referencingExams.length} exams for question ${questionId}:`,
+                referencingExams
+              );
+            } catch (examQueryErr) {
+              console.error(
+                `[QUESTIONS][BULK-DELETE] Error fetching question/exams for question ${id}:`,
+                examQueryErr.message
+              );
+            }
+
             results.constraintErrors.push({
               id,
-              message:
-                "Cannot delete this question because it is referenced by other records",
+              questionName: questionName,
+              message: `Question "${questionName}" is in use`,
+              referencingExams: referencingExams,
             });
             console.log(
-              `[QUESTIONS][BULK-DELETE] Foreign key constraint error for question ${id}: Question is referenced by other records`
+              `[QUESTIONS][BULK-DELETE] Added constraint error for question ${id} (${questionName}) with ${referencingExams.length} referencing exams`
             );
           } else {
             results.errors.push({ id, error: deleteErr.message });

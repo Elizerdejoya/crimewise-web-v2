@@ -53,7 +53,7 @@ const studentNavSections = [
     heading: "Exams",
     items: [
       { name: "Enter Exam", href: "/student/exams", icon: CalendarClock },
-      { name: "Results", href: "/student/results", icon: FileText },
+      { name: "My Exams", href: "/student/results", icon: FileText },
     ],
   },
 ];
