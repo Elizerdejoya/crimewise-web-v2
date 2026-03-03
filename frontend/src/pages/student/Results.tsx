@@ -10,6 +10,7 @@ import { Search, Eye, ArrowUpDown, ArrowUp, ArrowDown, FileText, Tags, RefreshCw
 import {
   Table,
   TableBody,
+  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -292,43 +293,15 @@ const Results = () => {
     return typeof value === 'string' ? value : String(value);
   };
 
-  // Parse date string, treating timezone-less timestamps as Asia/Manila local time
-  const parseDateRespectingManila = (dateStr: string | null | undefined): Date | null => {
-    if (!dateStr) return null;
-    const s = String(dateStr);
-    // If string contains explicit timezone (Z or ±HH:MM), let Date handle it
-    if (/[Zz]|[+-]\d{2}:?\d{2}$/.test(s)) {
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    // Try parse ISO-like without timezone: YYYY-MM-DDTHH:MM[:SS]
-    const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
-    if (m) {
-      const y = Number(m[1]);
-      const mo = Number(m[2]) - 1;
-      const day = Number(m[3]);
-      const hh = Number(m[4]);
-      const mm = Number(m[5]);
-      const ss = Number(m[6] || '0');
-      // Treat the provided wall time as Asia/Manila (UTC+8). To get the correct UTC instant,
-      // compute UTC milliseconds for that wall time then subtract the +08:00 offset.
-      const manilaOffsetMs = 8 * 60 * 60 * 1000;
-      const utcMs = Date.UTC(y, mo, day, hh, mm, ss) - manilaOffsetMs;
-      const d = new Date(utcMs);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
-  };
-
   // Format date for display (e.g., Nov 25, 2025)
   const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "-";
     try {
-      const dateObj = parseDateRespectingManila(dateStr);
-      if (!dateObj) return String(dateStr).split('T')[0] || String(dateStr);
+      const date = new Date(dateStr);
+      // Backend stores Manila local time; add 8 hours to correct UTC offset
+      const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
-      return dateObj.toLocaleDateString('en-US', options);
+      return correctedDate.toLocaleDateString('en-US', options);
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
@@ -338,10 +311,11 @@ const Results = () => {
   const formatTime = (dateStr: string | null | undefined) => {
     if (!dateStr) return "";
     try {
-      const dObj = parseDateRespectingManila(dateStr);
-      if (!dObj) return "";
+      const d = new Date(dateStr);
+      // Backend stores Manila local time; add 8 hours to correct UTC offset
+      const correctedDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
-      return dObj.toLocaleTimeString('en-US', options).toLowerCase();
+      return correctedDate.toLocaleTimeString('en-US', options).toLowerCase();
     } catch (e) {
       return "";
     }
@@ -1292,7 +1266,7 @@ const Results = () => {
                       <TableRow key={result.id}>
                         <TableCell className="font-medium text-center">{result.examName}</TableCell>
                         <TableCell className="text-center">{result.course}</TableCell>
-                        <TableCell className="text-center">{formatDateRange(result.start, result.end)}</TableCell>
+                        <TableCell className="text-center text-xs">{formatDateRange(result.start, result.end)}</TableCell>
                         <TableCell className="text-center">{result.instructor_name || result.created_by || (result.instructor_id ? `Instructor ${result.instructor_id}` : '-')}</TableCell>
                         {viewMode === 'taken' && (
                           <TableCell>
