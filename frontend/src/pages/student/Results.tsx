@@ -298,10 +298,8 @@ const Results = () => {
     if (!dateStr) return "-";
     try {
       const date = new Date(dateStr);
-      // Backend stores Manila local time; add 8 hours to correct UTC offset
-      const correctedDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' };
-      return correctedDate.toLocaleDateString('en-US', options);
+      return date.toLocaleDateString('en-US', options);
     } catch (e) {
       try { return String(dateStr).split('T')[0]; } catch { return String(dateStr); }
     }
@@ -312,10 +310,8 @@ const Results = () => {
     if (!dateStr) return "";
     try {
       const d = new Date(dateStr);
-      // Backend stores Manila local time; add 8 hours to correct UTC offset
-      const correctedDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
       const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
-      return correctedDate.toLocaleTimeString('en-US', options).toLowerCase();
+      return d.toLocaleTimeString('en-US', options).toLowerCase();
     } catch (e) {
       return "";
     }
