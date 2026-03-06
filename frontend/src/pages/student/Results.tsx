@@ -1197,12 +1197,14 @@ const Results = () => {
               <RefreshCw className={`h-4 w-4 ${isReloading ? 'animate-spin' : ''}`} />
               Reload
             </Button>
+
+            {/* Count Display placed next to reload */}
+            <div className="text-sm text-muted-foreground ml-4 whitespace-nowrap">
+              {processedResults.length} exam{processedResults.length !== 1 ? 's' : ''} found
+            </div>
           </div>
 
-          {/* Right Section - Count Display */}
-          <div className="text-sm text-muted-foreground ml-4 whitespace-nowrap">
-            {processedResults.length} exam{processedResults.length !== 1 ? 's' : ''} found
-          </div>
+          {/* right section removed; count is now part of left group */}
         </div>
 
           <Card>
